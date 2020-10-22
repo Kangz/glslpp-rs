@@ -1,3 +1,4 @@
+#[allow(clippy::match_like_matches_macro)]
 mod lexer;
-mod pp;
+pub mod pp;
 mod token;
