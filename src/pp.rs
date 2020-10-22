@@ -2,6 +2,7 @@ use crate::lexer;
 use crate::lexer::Token as LexerToken;
 use crate::lexer::TokenValue as LexerTokenValue;
 use crate::token::*;
+use std::cmp::Ordering;
 use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 
@@ -150,9 +151,8 @@ impl<'a> DirectiveProcessor<'a> {
 
     fn consume_until_newline(&mut self) -> Step<()> {
         loop {
-            match self.get_lexer_token()?.value {
-                LexerTokenValue::NewLine => return Ok(()),
-                _ => {}
+            if let LexerTokenValue::NewLine = self.get_lexer_token()?.value {
+                return Ok(());
             }
         }
     }
@@ -277,8 +277,7 @@ impl<'a> DirectiveProcessor<'a> {
                 Ok(value != 0)
             } else {
                 // TODO, so much to do here xD
-                assert!(false);
-                Ok(true)
+                todo!();
             }
         })
     }
@@ -365,12 +364,10 @@ impl<'a> DirectiveProcessor<'a> {
                     }
                 }
             }
+        } else if !self.skipping {
+            make_unexpected_error(token).into()
         } else {
-            if !self.skipping {
-                make_unexpected_error(token).into()
-            } else {
-                Ok(())
-            }
+            Ok(())
         }
     }
 }
@@ -385,12 +382,10 @@ impl<'a> MELexer for DirectiveProcessor<'a> {
                     if lexer_token.start_of_line {
                         self.parse_directive(lexer_token.location)?;
                         Continue.into()
+                    } else if !self.skipping {
+                        make_unexpected_error(lexer_token).into()
                     } else {
-                        if !self.skipping {
-                            make_unexpected_error(lexer_token).into()
-                        } else {
-                            Continue.into()
-                        }
+                        Continue.into()
                     }
                 }
 
@@ -430,7 +425,7 @@ struct MacroProcessor {
 }
 
 impl MacroProcessor {
-    fn start_define_invocation(&mut self, name: &String, lexer: &mut dyn MELexer) -> Step<bool> {
+    fn start_define_invocation(&mut self, name: &str, lexer: &mut dyn MELexer) -> Step<bool> {
         if self.defines_being_expanded.contains(name) {
             return Ok(false);
         }
@@ -449,11 +444,11 @@ impl MacroProcessor {
                 let lparen_location = match self.step_no_continue(lexer) {
                     Ok(Token {
                         value: TokenValue::Punct(Punct::LeftParen),
-                        location: location @ _,
+                        location,
                     }) => location,
 
                     // Function-like macros are not processed if there is no ( right after the identifier
-                    token @ _ => {
+                    token => {
                         self.peeked = Some(token);
                         return Ok(false);
                     }
@@ -464,21 +459,25 @@ impl MacroProcessor {
                 let parameters = self.parse_define_call_arguments(lexer, lparen_location)?;
 
                 // Check for the number of arguments.
-                if parameters.len() > invocation.define.params.len() {
-                    let params_empty = parameters.len() == 1 && parameters[0].len() == 0;
-                    let expects_zero_args = invocation.define.params.len() == 0;
+                match parameters.len().cmp(&invocation.define.params.len()) {
+                    Ordering::Greater => {
+                        let params_empty = parameters.len() == 1 && parameters[0].is_empty();
+                        let expects_zero_args = invocation.define.params.is_empty();
 
-                    if !(params_empty && expects_zero_args) {
+                        if !(params_empty && expects_zero_args) {
+                            return Err(StepExit::Error((
+                                PreprocessorError::TooManyDefineArguments,
+                                lparen_location,
+                            )));
+                        }
+                    }
+                    Ordering::Less => {
                         return Err(StepExit::Error((
-                            PreprocessorError::TooManyDefineArguments,
+                            PreprocessorError::TooFewDefineArguments,
                             lparen_location,
                         )));
                     }
-                } else if parameters.len() < invocation.define.params.len() {
-                    return Err(StepExit::Error((
-                        PreprocessorError::TooFewDefineArguments,
-                        lparen_location,
-                    )));
+                    _ => {}
                 }
 
                 // Fully expand the parameters
@@ -586,7 +585,7 @@ impl MacroProcessor {
 
             fn get_define(&self, name: &str) -> Option<&Rc<Define>> {
                 if self.expander.defines_being_expanded.contains(name) {
-                    return None;
+                    None
                 } else {
                     self.parent_lexer.get_define(name)
                 }
