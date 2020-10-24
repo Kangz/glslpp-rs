@@ -4,6 +4,7 @@ use crate::lexer::TokenValue as LexerTokenValue;
 use crate::token::*;
 use std::cmp::Ordering;
 use std::collections::{HashMap, HashSet};
+use std::convert::TryFrom;
 use std::rc::Rc;
 
 #[derive(Clone, PartialEq, Debug)]
@@ -345,14 +346,17 @@ impl<'a> DirectiveProcessor<'a> {
 
         if let LexerTokenValue::Ident(ref directive) = token.value {
             match directive.as_str() {
+                // TODO elif line
                 "error" => self.parse_error_directive(token.location),
-                // TODO if elif line
+
                 "define" => self.parse_define_directive(token.location),
                 "undef" => self.parse_undef_directive(token.location),
+
                 "if" => self.parse_if_directive(token.location),
                 "ifdef" => self.parse_ifdef_directive(token.location),
                 "ifndef" => self.parse_ifndef_directive(token.location),
                 "endif" => self.parse_endif_directive(token.location),
+
                 _ => {
                     if !self.skipping {
                         Err(StepExit::Error((
@@ -422,10 +426,17 @@ struct MacroProcessor {
     defines_being_expanded: HashSet<String>,
 
     peeked: Option<Step<Token>>,
+    define_line: u32,
 }
 
 impl MacroProcessor {
-    fn start_define_invocation(&mut self, name: &str, lexer: &mut dyn MELexer) -> Step<bool> {
+    fn start_define_invocation(
+        &mut self,
+        name: &str,
+        location: Location,
+        lexer: &mut dyn MELexer,
+    ) -> Step<bool> {
+        // Defines can be expanding only once, it is not possible to do recursive defines
         if self.defines_being_expanded.contains(name) {
             return Ok(false);
         }
@@ -439,6 +450,12 @@ impl MacroProcessor {
                 parameter_position: 0,
                 parameter_expanding: std::usize::MAX,
             };
+
+            // If this is a not a function-like define, __LINE__ inside the define is the line of the first
+            // character of the invocation. Only the line of the top-level invocation counts.
+            if !self.is_expanding_define() {
+                self.define_line = location.line;
+            }
 
             if invocation.define.function_like {
                 let lparen_location = match self.step_no_continue(lexer) {
@@ -456,7 +473,12 @@ impl MacroProcessor {
 
                 // TODO still bail out if define was undefined until now? This would match
                 // clang and GCC
-                let parameters = self.parse_define_call_arguments(lexer, lparen_location)?;
+                let (parameters, closing_location) =
+                    self.parse_define_call_arguments(lexer, lparen_location)?;
+
+                if !self.is_expanding_define() {
+                    self.define_line = closing_location.line;
+                }
 
                 // Check for the number of arguments.
                 match parameters.len().cmp(&invocation.define.params.len()) {
@@ -499,11 +521,13 @@ impl MacroProcessor {
         Ok(false)
     }
 
+    // Parse the arguments of the function-like define starting after the first (. Also returns
+    // the location of the closing ).
     fn parse_define_call_arguments(
         &mut self,
         lexer: &mut dyn MELexer,
         mut current_location: Location,
-    ) -> Step<Vec<Vec<Token>>> {
+    ) -> Step<(Vec<Vec<Token>>, Location)> {
         let mut paren_nesting = 0u32;
         let mut arguments = vec![vec![]];
 
@@ -545,7 +569,7 @@ impl MacroProcessor {
                 TokenValue::Punct(Punct::RightParen) => {
                     // Return the arguments when we find our )
                     if paren_nesting == 0 {
-                        return Ok(arguments);
+                        return Ok((arguments, token.location));
                     }
                     paren_nesting -= 1;
                 }
@@ -608,7 +632,11 @@ impl MacroProcessor {
                 Err(StepExit::Continue) => continue,
                 Ok(token) => {
                     if let TokenValue::Ident(name) = &token.value {
-                        if processor.start_define_invocation(name, &mut parameter_lexer)? {
+                        if processor.start_define_invocation(
+                            name,
+                            token.location,
+                            &mut parameter_lexer,
+                        )? {
                             continue;
                         }
                     }
@@ -619,7 +647,11 @@ impl MacroProcessor {
         }
     }
 
-    fn step(&mut self, lexer: &mut dyn MELexer) -> Step<Token> {
+    fn is_expanding_define(&self) -> bool {
+        !self.define_invocations.is_empty()
+    }
+
+    fn step_internal(&mut self, lexer: &mut dyn MELexer) -> Step<Token> {
         if let Some(step) = self.peeked.take() {
             return step;
         }
@@ -657,8 +689,38 @@ impl MacroProcessor {
             }
         }
 
-        // TODO handle __LINE__ and friends
-        lexer.step()
+        Ok(lexer.step()?)
+    }
+
+    fn step(&mut self, lexer: &mut dyn MELexer) -> Step<Token> {
+        let token = self.step_internal(lexer)?;
+
+        if let TokenValue::Ident(name) = &token.value {
+            if name == "__LINE__" {
+                // When inside a define, __LINE__ is that define's line.
+                let line = if self.is_expanding_define() {
+                    self.define_line
+                } else {
+                    token.location.line
+                };
+
+                // TODO handle checked add with #line directive offset.
+
+                if let Ok(int_line) = i32::try_from(line) {
+                    return Ok(Token {
+                        value: TokenValue::Int(int_line),
+                        location: token.location,
+                    });
+                } else {
+                    return Err(StepExit::Error((
+                        PreprocessorError::ErrorDirective,
+                        token.location,
+                    )));
+                }
+            }
+        }
+
+        Ok(token)
     }
 
     fn step_no_continue(&mut self, lexer: &mut dyn MELexer) -> Step<Token> {
@@ -690,10 +752,11 @@ impl<'a> Preprocessor<'a> {
         // Is this token the start of a new macro?
         if let TokenValue::Ident(name) = &token.value {
             // Returns Continue if it started the define, token otherwise.
-            if self
-                .macro_processor
-                .start_define_invocation(name, &mut self.directive_processor)?
-            {
+            if self.macro_processor.start_define_invocation(
+                name,
+                token.location,
+                &mut self.directive_processor,
+            )? {
                 return Continue.into();
             }
         }
@@ -1117,6 +1180,7 @@ mod tests {
             PreprocessorError::TooManyDefineArguments,
         );
     }
+
     #[test]
     fn define_redefinition() {
         // Test that it is valid to redefine a define with the same tokens.
@@ -1401,5 +1465,59 @@ mod tests {
         );
     }
 
-    // TODO if, if skipping
+    #[test]
+    fn line_define() {
+        // Test that the __LINE__ define gives the number of the line.
+        check_preprocessed_result(
+            "__LINE__
+            __LINE__
+
+            __LINE__",
+            "1 2 4",
+        );
+
+        // Test that __LINE__ split over multiple lines gives the first line.
+        check_preprocessed_result("__L\\\nINE__", "1");
+
+        // Test that the __LINE__ define used in define gives the invocation's line
+        check_preprocessed_result(
+            "#define MY_DEFINE __LINE__
+            MY_DEFINE
+            MY\\\n_DEFINE",
+            "2 3",
+        );
+
+        // Test a corner case where the __LINE__ is a peeked token for function-like
+        // define parsing.
+        check_preprocessed_result(
+            "#define A(foo) Bleh
+            A __LINE__ B",
+            "A 2 B",
+        );
+
+        // Test that __LINE__ inside function like defines is the position of the closing )
+        check_preprocessed_result(
+            "#define B + __LINE__ +
+            #define A(X, Y) X __LINE__ Y B
+            A(-, -)
+            A(-, -
+            )",
+            "- 3 - + 3 +
+            - 5 - + 5 +",
+        );
+
+        // Test that the __LINE__ inside a define's argument get the correct value.
+        check_preprocessed_result(
+            "#define A(X) X
+            A(__LINE__
+            __LINE__)",
+            "2 3",
+        );
+        check_preprocessed_result(
+            "#define B(X) X
+            #define A(X) B(X) + __LINE__
+            A(__LINE__)",
+            "3 + 3",
+        );
+    }
 }
