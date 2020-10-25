@@ -77,6 +77,7 @@ pub enum PreprocessorError {
     DefineRedefined,
     EndifOutsideOfBlock,
     UnfinishedBlock,
+    LineOverflow,
 }
 
 #[derive(Clone, PartialEq, Debug)]
