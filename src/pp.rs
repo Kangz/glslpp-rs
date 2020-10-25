@@ -1,11 +1,6 @@
-use crate::lexer;
-use crate::lexer::Token as LexerToken;
-use crate::lexer::TokenValue as LexerTokenValue;
+use crate::lexer::{self, Token as LexerToken, TokenValue as LexerTokenValue};
 use crate::token::*;
-use std::cmp::Ordering;
-use std::collections::{HashMap, HashSet};
-use std::convert::TryFrom;
-use std::rc::Rc;
+use std::{cmp::Ordering, collections::{HashMap, HashSet}, convert::TryFrom, rc::Rc};
 
 #[derive(Clone, PartialEq, Debug)]
 struct Define {
