@@ -1,6 +1,11 @@
 use crate::lexer::{self, Token as LexerToken, TokenValue as LexerTokenValue};
 use crate::token::*;
-use std::{cmp::Ordering, collections::{HashMap, HashSet}, convert::TryFrom, rc::Rc};
+use std::{
+    cmp::Ordering,
+    collections::{HashMap, HashSet},
+    convert::TryFrom,
+    rc::Rc,
+};
 
 #[derive(Clone, PartialEq, Debug)]
 struct Define {
@@ -41,6 +46,7 @@ impl<T> From<StepExit> for Step<T> {
 trait MELexer {
     fn step(&mut self) -> Step<Token>;
     fn get_define(&self, name: &str) -> Option<&Rc<Define>>;
+    fn apply_line_offset(&self, line: u32, location: Location) -> Step<i32>;
 }
 
 fn make_unexpected_error(token: LexerToken) -> StepExit {
@@ -55,6 +61,10 @@ fn make_unexpected_error(token: LexerToken) -> StepExit {
     StepExit::Error((error, token.location))
 }
 
+fn make_line_overflow_error(location: Location) -> StepExit {
+    StepExit::Error((PreprocessorError::LineOverflow, location))
+}
+
 struct DirectiveBlock {
     start_location: Location,
     outer_skipped: bool,
@@ -65,6 +75,7 @@ struct DirectiveProcessor<'a> {
     defines: HashMap<String, Rc<Define>>,
     skipping: bool,
     blocks: Vec<DirectiveBlock>,
+    line_offset: i64,
 }
 
 fn convert_lexer_token(token: LexerToken) -> Step<Token> {
@@ -101,6 +112,7 @@ impl<'a> DirectiveProcessor<'a> {
             defines: Default::default(),
             skipping: false,
             blocks: Default::default(),
+            line_offset: 0,
         }
     }
 
@@ -267,6 +279,33 @@ impl<'a> DirectiveProcessor<'a> {
         }
     }
 
+    fn parse_line_directive(&mut self, directive_location: Location) -> Step<()> {
+        let token = self.expect_a_lexer_token(directive_location)?;
+
+        // TODO support expressions for the line number.
+        // TODO figure out what to do with the file, either number or string?
+
+        // Validates that the line is between 0 and 2^31 as per the C standard.
+        match token.value {
+            LexerTokenValue::Int(value) => {
+                if value < 0 {
+                    return Err(make_line_overflow_error(token.location));
+                }
+                self.line_offset = value as i64 - directive_location.line as i64;
+            }
+            LexerTokenValue::UInt(value) => {
+                if value >= (1u32 << 31u32) {
+                    return Err(make_line_overflow_error(token.location));
+                }
+                self.line_offset = value as i64 - directive_location.line as i64;
+            }
+            _ => return Err(make_unexpected_error(token)),
+        };
+
+        self.expect_lexer_token(LexerTokenValue::NewLine, token.location)?;
+        Ok(())
+    }
+
     fn parse_if_directive(&mut self, directive_location: Location) -> Step<()> {
         self.parse_if_like_directive(directive_location, |this, location| {
             if let LexerTokenValue::Int(value) = this.expect_a_lexer_token(location)?.value {
@@ -343,6 +382,7 @@ impl<'a> DirectiveProcessor<'a> {
             match directive.as_str() {
                 // TODO elif line
                 "error" => self.parse_error_directive(token.location),
+                "line" => self.parse_line_directive(token.location),
 
                 "define" => self.parse_define_directive(token.location),
                 "undef" => self.parse_undef_directive(token.location),
@@ -412,6 +452,14 @@ impl<'a> MELexer for DirectiveProcessor<'a> {
 
     fn get_define(&self, name: &str) -> Option<&Rc<Define>> {
         self.defines.get(name)
+    }
+
+    fn apply_line_offset(&self, line: u32, location: Location) -> Step<i32> {
+        if let Ok(offset_line) = i32::try_from(line as i64 + self.line_offset) {
+            Ok(offset_line)
+        } else {
+            Err(make_line_overflow_error(location))
+        }
     }
 }
 
@@ -609,6 +657,10 @@ impl MacroProcessor {
                     self.parent_lexer.get_define(name)
                 }
             }
+
+            fn apply_line_offset(&self, line: u32, _: Location) -> Step<i32> {
+                Ok(line as i32)
+            }
         }
 
         let mut parameter_lexer = ExpandParameterLexer {
@@ -699,19 +751,10 @@ impl MacroProcessor {
                     token.location.line
                 };
 
-                // TODO handle checked add with #line directive offset.
-
-                if let Ok(int_line) = i32::try_from(line) {
-                    return Ok(Token {
-                        value: TokenValue::Int(int_line),
-                        location: token.location,
-                    });
-                } else {
-                    return Err(StepExit::Error((
-                        PreprocessorError::ErrorDirective,
-                        token.location,
-                    )));
-                }
+                return Ok(Token {
+                    value: TokenValue::Int(lexer.apply_line_offset(line, token.location)?),
+                    location: token.location,
+                });
             }
         }
 
@@ -820,22 +863,19 @@ mod tests {
             if let (Ok(pp_tok), Ok(ref noop_tok)) = (pp_item, noop_item) {
                 assert_eq!(pp_tok.value, noop_tok.value);
             } else {
-                assert!(false)
+                unreachable!();
             }
         }
     }
 
     fn check_preprocessing_error(input: &str, expected_err: PreprocessorError) {
         for item in Preprocessor::new(input) {
-            match item {
-                Err((err, _)) => {
-                    assert_eq!(err, expected_err);
-                    return;
-                }
-                Ok(_) => {}
+            if let Err((err, _)) = item {
+                assert_eq!(err, expected_err);
+                return;
             }
         }
-        assert!(false);
+        unreachable!();
     }
 
     #[test]
@@ -1461,6 +1501,44 @@ mod tests {
     }
 
     #[test]
+    fn parse_line() {
+        // Test that #line with a uint and int is allowed.
+        check_preprocessed_result(
+            "#line 4u
+            #line 3
+            #line 0xF00",
+            "",
+        );
+
+        // Test with something other than a number after #line (including a newline)
+        check_preprocessing_error(
+            "#line !",
+            PreprocessorError::UnexpectedToken(TokenValue::Punct(Punct::Bang)),
+        );
+        check_preprocessing_error("#line", PreprocessorError::UnexpectedNewLine);
+        check_preprocessing_error(
+            "#line foo",
+            PreprocessorError::UnexpectedToken(TokenValue::Ident("foo".into())),
+        );
+
+        // Test that #line must have a newline after the integer (this will change when #line
+        // supports constant expressions)
+        check_preprocessing_error("#line 1 #", PreprocessorError::UnexpectedHash);
+
+        // Test that the integer must be non-negative.
+        // TODO enabled once #line supports parsing expressions.
+        // check_preprocessing_error(
+        //     "#line -1",
+        //     PreprocessorError::LineOverflow,
+        // );
+
+        // test that the integer must fit in a i32
+        check_preprocessing_error("#line 2147483648u", PreprocessorError::LineOverflow);
+        // test that the integer must fit in a i32
+        check_preprocessed_result("#line 2147483647u", "");
+    }
+
+    #[test]
     fn line_define() {
         // Test that the __LINE__ define gives the number of the line.
         check_preprocessed_result(
@@ -1513,6 +1591,30 @@ mod tests {
             #define A(X) B(X) + __LINE__
             A(__LINE__)",
             "3 + 3",
+        );
+
+        // Check that #line is taken into account and can modify the line number in both directions.
+        check_preprocessed_result(
+            "#line 1000
+            __LINE__
+            __LINE__
+
+            #line 0
+            __LINE__
+            __LINE__",
+            "1001 1002 1 2",
+        );
+
+        // Check that line computations are not allowed to overflow an i32
+        check_preprocessed_result(
+            "#line 2147483646
+            __LINE__",
+            "2147483647",
+        );
+        check_preprocessing_error(
+            "#line 2147483647
+            __LINE__",
+            PreprocessorError::LineOverflow,
         );
     }
 }
