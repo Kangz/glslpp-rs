@@ -94,7 +94,7 @@ fn parse_define() {
     // Test that there must be a name before the new line
     check_preprocessing_error(
         "#define
-            A",
+        A",
         PreprocessorError::UnexpectedNewLine,
     );
 }
@@ -110,7 +110,7 @@ fn parse_undef() {
     // Test that there must be a name before the new line
     check_preprocessing_error(
         "#undef
-            A",
+        A",
         PreprocessorError::UnexpectedNewLine,
     );
 }
@@ -120,62 +120,62 @@ fn argument_less_define() {
     // Test a simple case
     check_preprocessed_result(
         "#define A B
-            A",
+         A",
         "B",
     );
 
     // Test an empty define
     check_preprocessed_result(
         "#define A
-            A something",
+         A something",
         "something",
     );
 
     // Test a define containing a token that's itself
     check_preprocessed_result(
         "#define A A B C
-            A",
+         A",
         "A B C",
     );
 
     // Test a define invocation followed by () doesn't remove them
     check_preprocessed_result(
         "#define A foo
-            A()",
+         A()",
         "foo()",
     );
 
     // Test nesting define
     check_preprocessed_result(
         "#define B C
-            #define A B
-            A",
+         #define A B
+         A",
         "C",
     );
 
     // Test nesting with a bunch of empty tokens
     check_preprocessed_result(
         "#define D
-            #define C D D
-            #define B C C D D
-            #define A B B C C D D
-            A truc",
+         #define C D D
+         #define B C C D D
+         #define A B B C C D D
+         A truc",
         "truc",
     );
 
     // Test line continuation doesn't break the define
     check_preprocessed_result(
         "#define C A \\
-             B
-            C",
+         B
+         C",
         "A B",
     );
 
     // Test that multiline comments don't break the define
     check_preprocessed_result(
         "#define C A /*
-            */ B
-            C",
+         */ B
+         C",
         "A B",
     );
 
@@ -183,12 +183,12 @@ fn argument_less_define() {
     // Checks both when undefined a ident found in A and redefining it.
     check_preprocessed_result(
         "#define B stuff
-            #define C stuffy stuff
-            #define A B C
-            #undef B
-            #undef C
-            #define C :)
-            A",
+         #define C stuffy stuff
+         #define A B C
+         #undef B
+         #undef C
+         #define C :)
+         A",
         "B :)",
     );
 
@@ -196,9 +196,9 @@ fn argument_less_define() {
     // the identifier
     check_preprocessed_result(
         "#define A ()
-            #define B\t(!
-            #define C/**/(a, b)
-            A B C",
+         #define B\t(!
+         #define C/**/(a, b)
+         A B C",
         "() (! (a, b)",
     );
 
@@ -211,28 +211,28 @@ fn function_like_define() {
     // Test calling a define with 1 argument
     check_preprocessed_result(
         "#define A(a) +a+
-            A(1)",
+         A(1)",
         "+1+",
     );
 
     // Test calling a define with 0 arguments
     check_preprocessed_result(
         "#define A() foo
-            A()",
+         A()",
         "foo",
     );
 
     // Test called a define with multiple arguments
     check_preprocessed_result(
         "#define A(a, b) b a
-            A(1, 2)",
+         A(1, 2)",
         "2 1",
     );
 
     // Test not calling a function-like macro just returns the identifier
     check_preprocessed_result(
         "#define A(a) foobar
-            A + B",
+         A + B",
         "A + B",
     );
 
@@ -268,65 +268,65 @@ fn function_like_define() {
     // Test passing too many arguments is disallowed
     check_preprocessing_error(
         "#define A(a, b) foo
-            A(1, 2, 3)",
+         A(1, 2, 3)",
         PreprocessorError::TooManyDefineArguments,
     );
 
     // Test passing too few arguments is disallowed
     check_preprocessing_error(
         "#define A(a, b) foo
-            A(1)",
+         A(1)",
         PreprocessorError::TooFewDefineArguments,
     );
 
     // Test passing no argument to a define with one parameter.
     check_preprocessed_result(
         "#define A(a) foo a
-            A()",
+         A()",
         "foo",
     );
 
     // Test EOF while parsing define arguments
     check_preprocessing_error(
         "#define A(a, b) foo
-            A(",
+         A(",
         PreprocessorError::UnexpectedEndOfInput,
     );
 
     // Test unknown token while parsing define arguments
     check_preprocessing_error(
         "#define A(a) foo
-            A($)",
+         A($)",
         PreprocessorError::UnexpectedCharacter,
     );
 
     // Test #error while parsing arguments
     check_preprocessing_error(
         "#define A(a) foo
-            A(
-            #error
-            )",
+         A(
+         #error
+         )",
         PreprocessorError::ErrorDirective,
     );
 
     // Test that commas inside () are not used to split parameters
     check_preprocessed_result(
         "#define STUFF(a, b) a + b
-            STUFF((1, 2), 3)",
+         STUFF((1, 2), 3)",
         "(1, 2) + 3",
     );
 
     // Test that commas inside more nesting
     check_preprocessed_result(
         "#define STUFF(a, b) a + b
-            STUFF((((()1, 2))), 3)",
+         STUFF((((()1, 2))), 3)",
         "(((()1, 2))) + 3",
     );
 
     // Test that a macro can be used in its own arguments
     check_preprocessed_result(
         "#define B(foo) (foo)
-            B(1 B(2))",
+         B(1 B(2))",
         "(1 (2))",
     );
 
@@ -334,8 +334,8 @@ fn function_like_define() {
     // were, the COMMA would make a third argument to A appear, which would be an error.
     check_preprocessed_result(
         "#define A(x, y) x + y
-            #define COMMA ,
-            A(1 COMMA 2, 3)",
+         #define COMMA ,
+         A(1 COMMA 2, 3)",
         "1, 2 + 3",
     );
 
@@ -344,9 +344,9 @@ fn function_like_define() {
     // be an error.
     check_preprocessed_result(
         "#define A(x, y) x + y
-            #define COMMA ,
-            #define B(foo) A(foo)
-            B(1 COMMA 2)",
+         #define COMMA ,
+         #define B(foo) A(foo)
+         B(1 COMMA 2)",
         "1 + 2",
     );
 
@@ -354,20 +354,20 @@ fn function_like_define() {
     // call to A will create the token that will cause the outer B to call A with two arguments
     check_preprocessed_result(
         "#define A(a, b) ,(a + b)
-            #define B(foo) A(foo)
-            #define COMMA ,
-            B(1 B(2 COMMA 3))",
+         #define B(foo) A(foo)
+         #define COMMA ,
+         B(1 B(2 COMMA 3))",
         ",(1 + (2 + 3))",
     );
 
     // Test that the ( , and ) can come from the expansion of an argument.
     check_preprocessed_result(
         "#define LPAREN (
-            #define COMMA ,
-            #define RPAREN )
-            #define A(a, b) (a + b)
-            #define B(a) a
-            B(A LPAREN 1 COMMA 2 RPAREN)",
+         #define COMMA ,
+         #define RPAREN )
+         #define A(a, b) (a + b)
+         #define B(a) a
+         B(A LPAREN 1 COMMA 2 RPAREN)",
         "(1 + 2)",
     );
 
@@ -375,21 +375,21 @@ fn function_like_define() {
     // define call.
     check_preprocessed_result(
         "#define LPAREN (
-            #define COMMA ,
-            #define RPAREN )
-            #define A(a) a
-            #define B(a) a
-            #define C B(A(C))
-            C",
+         #define COMMA ,
+         #define RPAREN )
+         #define A(a) a
+         #define B(a) a
+         #define C B(A(C))
+         C",
         "C",
     );
 
     // Test that an error during define argument expansion gets surfaced properly.
     check_preprocessing_error(
         "#define A(x, y) x + y
-            #define COMMA ,
-            #define B(foo) A(1, foo)
-            B(2 COMMA 3)",
+         #define COMMA ,
+         #define B(foo) A(1, foo)
+         B(2 COMMA 3)",
         PreprocessorError::TooManyDefineArguments,
     );
 }
@@ -400,55 +400,55 @@ fn define_redefinition() {
     // Function-like case.
     check_preprocessed_result(
         "#define A(x, y) (x + y)
-            #define A(x, y) (x + y)",
+         #define A(x, y) (x + y)",
         "",
     );
     // Not function-like case.
     check_preprocessed_result(
         "#define A (x, y)
-            #define A (x, y)",
+         #define A (x, y)",
         "",
     );
 
     // Oh no a token is different!
     check_preprocessing_error(
         "#define A (a, y)
-            #define A (x, y)",
+         #define A (x, y)",
         PreprocessorError::DefineRedefined,
     );
 
     // Oh no, one has more tokens!
     check_preprocessing_error(
         "#define A a b
-            #define A a",
+         #define A a",
         PreprocessorError::DefineRedefined,
     );
 
     // Oh no, one is function-like and not the other
     check_preprocessing_error(
         "#define A a
-            #define A() a",
+         #define A() a",
         PreprocessorError::DefineRedefined,
     );
 
     // Oh no, a parameter name is different!
     check_preprocessing_error(
         "#define A(b) a
-            #define A(c) a",
+         #define A(c) a",
         PreprocessorError::DefineRedefined,
     );
 
     // Oh no, the parameter count is different!
     check_preprocessing_error(
         "#define A(b, d) a
-            #define A(c) a",
+         #define A(c) a",
         PreprocessorError::DefineRedefined,
     );
 
     // Oh no, the parameter order is different!
     check_preprocessing_error(
         "#define A(b, d) a
-            #define A(d, b) a",
+         #define A(d, b) a",
         PreprocessorError::DefineRedefined,
     );
 }
@@ -458,24 +458,24 @@ fn define_undef() {
     // Basic test
     check_preprocessed_result(
         "#define A B
-            #undef A
-            A",
+         #undef A
+         A",
         "A",
     );
 
     // It is ok to undef a non-existent define
     check_preprocessed_result(
         "#undef A
-            A",
+         A",
         "A",
     );
 
     // It is ok to undef a define twice
     check_preprocessed_result(
         "#define A B
-            #undef A
-            #undef A
-            A",
+         #undef A
+         #undef A
+         A",
         "A",
     );
 }
@@ -485,44 +485,44 @@ fn parse_ifdef() {
     // Basic test of parsing and operations.
     check_preprocessed_result(
         "#define A
-            #ifdef B
-                1
-            #endif
-            #ifdef A
-                2
-            #endif",
+         #ifdef B
+             1
+         #endif
+         #ifdef A
+             2
+         #endif",
         "2",
     );
 
     // Check that extra tokens after the identifier are disallowed.
     check_preprocessing_error(
         "#ifdef B ;
-            #endif",
+         #endif",
         PreprocessorError::UnexpectedToken(TokenValue::Punct(Punct::Semicolon)),
     );
 
     // Check that the identifier is required.
     check_preprocessing_error(
         "#ifdef
-            #endif",
+         #endif",
         PreprocessorError::UnexpectedNewLine,
     );
 
     // Check that extra tokens are allowed if we are skipping.
     check_preprocessed_result(
         "#if 0
-            #ifdef B ;
-            #endif
-            #endif",
+         #ifdef B ;
+         #endif
+         #endif",
         "",
     );
 
     // Check that having no identifier is allowed if we are skipping.
     check_preprocessed_result(
         "#if 0
-            #ifdef
-            #endif
-            #endif",
+         #ifdef
+         #endif
+         #endif",
         "",
     );
 }
@@ -532,44 +532,44 @@ fn parse_ifndef() {
     // Basic test of parsing and operations.
     check_preprocessed_result(
         "#define A
-            #ifndef B
-                1
-            #endif
-            #ifndef A
-                2
-            #endif",
+         #ifndef B
+             1
+         #endif
+         #ifndef A
+             2
+         #endif",
         "1",
     );
 
     // Check that extra tokens after the identifier are disallowed.
     check_preprocessing_error(
         "#ifndef B ;
-            #endif",
+         #endif",
         PreprocessorError::UnexpectedToken(TokenValue::Punct(Punct::Semicolon)),
     );
 
     // Check that the identifier is required.
     check_preprocessing_error(
         "#ifndef
-            #endif",
+         #endif",
         PreprocessorError::UnexpectedNewLine,
     );
 
     // Check that extra tokens are allowed if we are skipping.
     check_preprocessed_result(
         "#if 0
-            #ifndef B ;
-            #endif
-            #endif",
+         #ifndef B ;
+         #endif
+         #endif",
         "",
     );
 
     // Check that having no identifier is allowed if we are skipping.
     check_preprocessed_result(
         "#if 0
-            #ifndef
-            #endif
-            #endif",
+         #ifndef
+         #endif
+         #endif",
         "",
     );
 }
@@ -579,31 +579,31 @@ fn parse_endif() {
     // Basic test of using endif
     check_preprocessed_result(
         "#if 0
-            a
-            #endif",
+         a
+         #endif",
         "",
     );
 
     // Check that extra tokens are disallowed.
     check_preprocessing_error(
         "#if 1
-            #endif %",
+         #endif %",
         PreprocessorError::UnexpectedToken(TokenValue::Punct(Punct::Percent)),
     );
 
     // Check that extra tokens are disallowed even for an inner_skipped block.
     check_preprocessing_error(
         "#if 0
-            #endif %",
+         #endif %",
         PreprocessorError::UnexpectedToken(TokenValue::Punct(Punct::Percent)),
     );
 
     // Check that extra tokens are allowed if we are skipping.
     check_preprocessed_result(
         "#if 0
-            #if 0
-            #endif %
-            #endif",
+         #if 0
+         #endif %
+         #endif",
         "",
     );
 
@@ -611,8 +611,8 @@ fn parse_endif() {
     check_preprocessing_error("#if 0", PreprocessorError::UnfinishedBlock);
     check_preprocessing_error(
         "#if 1
-            #if 0
-            #endif",
+         #if 0
+         #endif",
         PreprocessorError::UnfinishedBlock,
     );
 }
@@ -622,58 +622,58 @@ fn skipping_behavior() {
     // Check regular tokens are skipped
     check_preprocessed_result(
         "#if 0
-            a b % 1 2u
-            #endif",
+         a b % 1 2u
+         #endif",
         "",
     );
     // Check random hash is allowed while skipping
     check_preprocessed_result(
         "#if 0
-            a # b
-            #endif",
+         a # b
+         #endif",
         "",
     );
 
     // Check that a hash at the start of the line and nothing else if valid while skipping
     check_preprocessed_result(
         "#if 0
-            #
-            #endif",
+         #
+         #endif",
         "",
     );
 
     // Check invalid directives are allowed while skipping
     check_preprocessed_result(
         "#if 0
-            #CestlafauteaNandi
-            #endif",
+         #CestlafauteaNandi
+         #endif",
         "",
     );
 
     // Check that defines skipped (otherwise there would be a redefinition error)
     check_preprocessed_result(
         "#if 0
-            #define A 1
-            #endif
-            #define A 2",
+         #define A 1
+         #endif
+         #define A 2",
         "",
     );
 
     // Check that undefs are skipped.
     check_preprocessed_result(
         "#define A 1
-            #if 0
-            #undef A
-            #endif
-            A",
+         #if 0
+         #undef A
+         #endif
+         A",
         "1",
     );
 
     // Check that #error is skipped.
     check_preprocessed_result(
         "#if 0
-            #error
-            #endif",
+         #error
+         #endif",
         "",
     );
 }
@@ -683,8 +683,8 @@ fn parse_line() {
     // Test that #line with a uint and int is allowed.
     check_preprocessed_result(
         "#line 4u
-            #line 3
-            #line 0xF00",
+         #line 3
+         #line 0xF00",
         "",
     );
 
@@ -721,9 +721,9 @@ fn line_define() {
     // Test that the __LINE__ define gives the number of the line.
     check_preprocessed_result(
         "__LINE__
-            __LINE__
+         __LINE__
 
-            __LINE__",
+         __LINE__",
         "1 2 4",
     );
 
@@ -733,8 +733,8 @@ fn line_define() {
     // Test that the __LINE__ define used in define gives the invocation's line
     check_preprocessed_result(
         "#define MY_DEFINE __LINE__
-            MY_DEFINE
-            MY\\\n_DEFINE",
+         MY_DEFINE
+         MY\\\n_DEFINE",
         "2 3",
     );
 
@@ -742,56 +742,56 @@ fn line_define() {
     // define parsing.
     check_preprocessed_result(
         "#define A(foo) Bleh
-            A __LINE__ B",
+         A __LINE__ B",
         "A 2 B",
     );
 
     // Test that __LINE__ inside function like defines is the position of the closing )
     check_preprocessed_result(
         "#define B + __LINE__ +
-            #define A(X, Y) X __LINE__ Y B
-            A(-, -)
-            A(-, -
-            )",
+         #define A(X, Y) X __LINE__ Y B
+         A(-, -)
+         A(-, -
+         )",
         "- 3 - + 3 +
-            - 5 - + 5 +",
+         - 5 - + 5 +",
     );
 
     // Test that the __LINE__ inside a define's argument get the correct value.
     check_preprocessed_result(
         "#define A(X) X
-            A(__LINE__
-            __LINE__)",
+         A(__LINE__
+         __LINE__)",
         "2 3",
     );
     check_preprocessed_result(
         "#define B(X) X
-            #define A(X) B(X) + __LINE__
-            A(__LINE__)",
+         #define A(X) B(X) + __LINE__
+         A(__LINE__)",
         "3 + 3",
     );
 
     // Check that #line is taken into account and can modify the line number in both directions.
     check_preprocessed_result(
         "#line 1000
-            __LINE__
-            __LINE__
+         __LINE__
+         __LINE__
 
-            #line 0
-            __LINE__
-            __LINE__",
+         #line 0
+         __LINE__
+         __LINE__",
         "1001 1002 1 2",
     );
 
     // Check that line computations are not allowed to overflow an i32
     check_preprocessed_result(
         "#line 2147483646
-            __LINE__",
+         __LINE__",
         "2147483647",
     );
     check_preprocessing_error(
         "#line 2147483647
-            __LINE__",
+         __LINE__",
         PreprocessorError::LineOverflow,
     );
 }
