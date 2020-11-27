@@ -881,6 +881,16 @@ fn skipping_behavior() {
          __LINE__",
         "4",
     );
+
+    // Check that #version/extension/pragma are skipped.
+    check_preprocessed_result(
+        "#if 0
+             #version a b c
+             #extension 1 2 3
+             #pragma tic
+         #endif",
+        "",
+    );
 }
 
 #[test]
@@ -1006,4 +1016,145 @@ fn line_define() {
          __LINE__",
         PreprocessorError::LineOverflow,
     );
+}
+
+#[test]
+fn parse_version() {
+    // Check that the #version directive is recognized and gets all the tokens until the newline
+    let tokens: Vec<PreprocessorItem> = Preprocessor::new("#version 1 ; (").collect();
+    assert_eq!(tokens.len(), 1);
+    match &tokens[0] {
+        Ok(Token {
+            value: TokenValue::Version(version),
+            ..
+        }) => {
+            assert!(!version.has_comments_before);
+            assert!(version.is_first_directive);
+            assert_eq!(version.tokens.len(), 3);
+            assert_eq!(version.tokens[0].value, TokenValue::Int(1));
+            assert_eq!(version.tokens[1].value, TokenValue::Punct(Punct::Semicolon));
+            assert_eq!(version.tokens[2].value, TokenValue::Punct(Punct::LeftParen));
+        }
+        _ => {
+            assert!(false);
+        }
+    };
+
+    // Check that we correctly detect comments before the #version directive.
+    let tokens: Vec<PreprocessorItem> = Preprocessor::new("/**/#version (").collect();
+    assert_eq!(tokens.len(), 1);
+    match &tokens[0] {
+        Ok(Token {
+            value: TokenValue::Version(version),
+            ..
+        }) => {
+            assert!(version.has_comments_before);
+            assert!(version.is_first_directive);
+            assert_eq!(version.tokens.len(), 1);
+            assert_eq!(version.tokens[0].value, TokenValue::Punct(Punct::LeftParen));
+        }
+        _ => {
+            assert!(false);
+        }
+    };
+
+    // Check that we properly detect tokens before the #version directive.
+    let tokens: Vec<PreprocessorItem> = Preprocessor::new("4 \n #version (").collect();
+    assert_eq!(tokens.len(), 2);
+    match &tokens[1] {
+        Ok(Token {
+            value: TokenValue::Version(version),
+            ..
+        }) => {
+            assert!(!version.has_comments_before);
+            assert!(!version.is_first_directive);
+            assert_eq!(version.tokens.len(), 1);
+            assert_eq!(version.tokens[0].value, TokenValue::Punct(Punct::LeftParen));
+        }
+        _ => {
+            assert!(false);
+        }
+    };
+
+    // Same thing but with another preprocessor directive.
+    let tokens: Vec<PreprocessorItem> = Preprocessor::new("#line 1\n #version (").collect();
+    assert_eq!(tokens.len(), 1);
+    match &tokens[0] {
+        Ok(Token {
+            value: TokenValue::Version(version),
+            ..
+        }) => {
+            assert!(!version.has_comments_before);
+            assert!(!version.is_first_directive);
+            assert_eq!(version.tokens.len(), 1);
+            assert_eq!(version.tokens[0].value, TokenValue::Punct(Punct::LeftParen));
+        }
+        _ => {
+            assert!(false);
+        }
+    };
+}
+
+#[test]
+fn parse_extension() {
+    // Check that the #extension directive is recognized and gets all the tokens until the newline
+    let tokens: Vec<PreprocessorItem> =
+        Preprocessor::new("#extension USE_WEBGPU_INSTEAD_OF_GL : required").collect();
+    assert_eq!(tokens.len(), 1);
+    match &tokens[0] {
+        Ok(Token {
+            value: TokenValue::Extension(extension),
+            ..
+        }) => {
+            assert!(!extension.has_non_directive_before);
+            assert_eq!(extension.tokens.len(), 3);
+            assert_eq!(
+                extension.tokens[0].value,
+                TokenValue::Ident("USE_WEBGPU_INSTEAD_OF_GL".into())
+            );
+            assert_eq!(extension.tokens[1].value, TokenValue::Punct(Punct::Colon));
+            assert_eq!(
+                extension.tokens[2].value,
+                TokenValue::Ident("required".into())
+            );
+        }
+        _ => {
+            assert!(false);
+        }
+    };
+
+    // Check that we correctly detect non directive tokens before the #extension
+    let tokens: Vec<PreprocessorItem> = Preprocessor::new("miaou\n#extension").collect();
+    assert_eq!(tokens.len(), 2);
+    match &tokens[1] {
+        Ok(Token {
+            value: TokenValue::Extension(extension),
+            ..
+        }) => {
+            assert!(extension.has_non_directive_before);
+            assert_eq!(extension.tokens.len(), 0);
+        }
+        _ => {
+            assert!(false);
+        }
+    };
+}
+
+#[test]
+fn parse_pragma() {
+    // Check that the #extension directive is recognized and gets all the tokens until the newline
+    let tokens: Vec<PreprocessorItem> = Preprocessor::new("#pragma stuff").collect();
+    assert_eq!(tokens.len(), 1);
+    match &tokens[0] {
+        Ok(Token {
+            value: TokenValue::Pragma(pragma),
+            ..
+        }) => {
+            assert_eq!(pragma.tokens.len(), 1);
+            assert_eq!(pragma.tokens[0].value, TokenValue::Ident("stuff".into()));
+        }
+        _ => {
+            assert!(false);
+        }
+    };
 }
