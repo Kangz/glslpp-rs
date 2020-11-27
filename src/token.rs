@@ -85,6 +85,24 @@ pub enum PreprocessorError {
 }
 
 #[derive(Clone, PartialEq, Debug)]
+pub struct Version {
+    pub tokens: Vec<Token>,
+    pub is_first_directive: bool,
+    pub has_comments_before: bool,
+}
+
+#[derive(Clone, PartialEq, Debug)]
+pub struct Extension {
+    pub tokens: Vec<Token>,
+    pub has_non_directive_before: bool,
+}
+
+#[derive(Clone, PartialEq, Debug)]
+pub struct Pragma {
+    pub tokens: Vec<Token>,
+}
+
+#[derive(Clone, PartialEq, Debug)]
 pub enum TokenValue {
     Ident(String),
 
@@ -92,6 +110,10 @@ pub enum TokenValue {
     UInt(u32),
     //Float(f32), // TODO
     Punct(Punct),
+
+    Version(Version),
+    Extension(Extension),
+    Pragma(Pragma),
 }
 
 #[derive(Clone, PartialEq, Debug)]

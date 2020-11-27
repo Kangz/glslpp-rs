@@ -78,6 +78,8 @@ struct DirectiveProcessor<'a> {
     skipping: bool,
     blocks: Vec<DirectiveBlock>,
     line_offset: i64,
+    had_directive: bool,
+    had_non_directive_token: bool,
 }
 
 pub fn convert_lexer_token(token: LexerToken) -> Step<Token> {
@@ -115,6 +117,8 @@ impl<'a> DirectiveProcessor<'a> {
             skipping: false,
             blocks: Default::default(),
             line_offset: 0,
+            had_directive: false,
+            had_non_directive_token: false,
         }
     }
 
@@ -165,6 +169,17 @@ impl<'a> DirectiveProcessor<'a> {
             if let LexerTokenValue::NewLine = self.get_lexer_token()?.value {
                 return Ok(());
             }
+        }
+    }
+
+    fn gather_until_newline(&mut self) -> Step<Vec<Token>> {
+        let mut tokens = Vec::new();
+        loop {
+            let token = self.get_lexer_token()?;
+            if token.value == LexerTokenValue::NewLine {
+                return Ok(tokens);
+            }
+            tokens.push(convert_lexer_token(token)?);
         }
     }
 
@@ -439,40 +454,100 @@ impl<'a> DirectiveProcessor<'a> {
         }
     }
 
-    fn parse_directive(&mut self, hash_location: Location) -> Step<()> {
+    fn parse_version_directive(&mut self, directive_location: Location) -> Step<Token> {
+        if self.skipping {
+            self.consume_until_newline()?;
+            Continue.into()
+        } else {
+            Ok(Token {
+                location: directive_location,
+                value: TokenValue::Version(Version {
+                    tokens: self.gather_until_newline()?,
+                    is_first_directive: !(self.had_directive || self.had_non_directive_token),
+                    has_comments_before: self.lexer.had_comments(),
+                }),
+            })
+        }
+    }
+
+    fn parse_extension_directive(&mut self, directive_location: Location) -> Step<Token> {
+        if self.skipping {
+            self.consume_until_newline()?;
+            Continue.into()
+        } else {
+            Ok(Token {
+                location: directive_location,
+                value: TokenValue::Extension(Extension {
+                    tokens: self.gather_until_newline()?,
+                    has_non_directive_before: self.had_non_directive_token,
+                }),
+            })
+        }
+    }
+
+    fn parse_pragma_directive(&mut self, directive_location: Location) -> Step<Token> {
+        if self.skipping {
+            self.consume_until_newline()?;
+            Continue.into()
+        } else {
+            Ok(Token {
+                location: directive_location,
+                value: TokenValue::Pragma(Pragma {
+                    tokens: self.gather_until_newline()?,
+                }),
+            })
+        }
+    }
+
+    fn parse_directive(&mut self, hash_location: Location) -> Step<Token> {
         let token = self.expect_a_lexer_token(hash_location)?;
 
         if let LexerTokenValue::Ident(ref directive) = token.value {
             match directive.as_str() {
                 // TODO elif line
-                "error" => self.parse_error_directive(token.location),
-                "line" => self.parse_line_directive(token.location),
+                "error" => self.parse_error_directive(token.location)?,
+                "line" => self.parse_line_directive(token.location)?,
 
-                "define" => self.parse_define_directive(token.location),
-                "undef" => self.parse_undef_directive(token.location),
+                "define" => self.parse_define_directive(token.location)?,
+                "undef" => self.parse_undef_directive(token.location)?,
 
-                "if" => self.parse_if_directive(token.location),
-                "ifdef" => self.parse_ifdef_directive(token.location),
-                "ifndef" => self.parse_ifndef_directive(token.location),
-                "elif" => self.parse_elif_directive(token.location),
-                "else" => self.parse_else_directive(token.location),
-                "endif" => self.parse_endif_directive(token.location),
+                "if" => self.parse_if_directive(token.location)?,
+                "ifdef" => self.parse_ifdef_directive(token.location)?,
+                "ifndef" => self.parse_ifndef_directive(token.location)?,
+                "elif" => self.parse_elif_directive(token.location)?,
+                "else" => self.parse_else_directive(token.location)?,
+                "endif" => self.parse_endif_directive(token.location)?,
 
+                "version" => {
+                    let result = self.parse_version_directive(token.location);
+                    self.had_directive = true;
+                    return result;
+                }
+                "extension" => {
+                    let result = self.parse_extension_directive(token.location);
+                    self.had_directive = true;
+                    return result;
+                }
+                "pragma" => {
+                    let result = self.parse_pragma_directive(token.location);
+                    self.had_directive = true;
+                    return result;
+                }
                 _ => {
                     if !self.skipping {
-                        Err(StepExit::Error((
+                        return Err(StepExit::Error((
                             PreprocessorError::UnknownDirective,
                             token.location,
-                        )))
-                    } else {
-                        Ok(())
+                        )));
                     }
                 }
             }
+            self.had_directive = true;
+            Continue.into()
         } else if !self.skipping {
             make_unexpected_error(token).into()
         } else {
-            Ok(())
+            Continue.into()
         }
     }
 }
@@ -486,8 +561,7 @@ impl<'a> MELexer for DirectiveProcessor<'a> {
                 LexerTokenValue::NewLine => Continue.into(),
                 LexerTokenValue::Hash => {
                     if lexer_token.start_of_line {
-                        self.parse_directive(lexer_token.location)?;
-                        Continue.into()
+                        self.parse_directive(lexer_token.location)
                     } else if !self.skipping {
                         make_unexpected_error(lexer_token).into()
                     } else {
@@ -497,6 +571,7 @@ impl<'a> MELexer for DirectiveProcessor<'a> {
 
                 _ => {
                     if !self.skipping {
+                        self.had_non_directive_token = true;
                         convert_lexer_token(lexer_token)
                     } else {
                         Continue.into()
