@@ -481,6 +481,31 @@ fn define_undef() {
 }
 
 #[test]
+fn parse_if() {
+    // Basic test of parsing and operations.
+    check_preprocessed_result(
+        "#if 0
+             1
+         #endif
+         #if 1
+             2
+         #endif",
+        "2",
+    );
+
+    // Check that garbage tokens are allowed if we are skipping.
+    check_preprocessed_result(
+        "#if 0
+         #if % ^ * )
+         #endif
+         #endif",
+        "",
+    );
+
+    // TODO test expressions?
+}
+
+#[test]
 fn parse_ifdef() {
     // Basic test of parsing and operations.
     check_preprocessed_result(
@@ -575,13 +600,175 @@ fn parse_ifndef() {
 }
 
 #[test]
+fn parse_elif() {
+    // Basic test of using elif
+    check_preprocessed_result(
+        "#if 1
+             1
+         #elif 1
+             2
+         #endif
+         #if 0
+             3
+         #elif 1
+             4
+         #elif 0
+             5
+         #endif",
+        "1 4",
+    );
+
+    // Check that #elif must appear in a block
+    check_preprocessing_error(
+        "#elif
+         aaa",
+        PreprocessorError::ElifOutsideOfBlock,
+    );
+
+    // Check that #elif must appear before the #else
+    check_preprocessing_error(
+        "#if 0
+         #else
+         #elif 1
+         #endif",
+        PreprocessorError::ElifAfterElse,
+    );
+
+    // Check that #elif must appear before the #else even when skipping
+    check_preprocessing_error(
+        "#if 0
+             #if 0
+             #else
+             #elif 1
+             #endif
+         #endif",
+        PreprocessorError::ElifAfterElse,
+    );
+
+    // Check that the condition isn't processed if the block is skipped.
+    check_preprocessed_result(
+        "#if 0
+            #if 1
+            #elif # !
+            #endif
+         #endif",
+        "",
+    );
+
+    // Check that the condition isn't processed if a previous segment was used.
+    check_preprocessed_result(
+        "#if 1
+         #elif # !
+         #endif
+
+         #if 0
+         #elif 1
+         #elif # %
+         #endif",
+        "",
+    );
+
+    // Check that elif isn't taken if at least one block was taken.
+    check_preprocessed_result(
+        "#if 1
+             A
+         #elif 1
+             B
+         #endif
+         
+         #if 0
+             C
+         #elif 1
+             D
+         #elif 1
+             E
+         #endif",
+        "A D",
+    );
+}
+
+#[test]
+fn parse_else() {
+    // Basic test of using else with if and elif
+    check_preprocessed_result(
+        "#if 0
+             1
+         #else
+             2
+         #endif
+         #if 0
+             3
+         #elif 0
+             4
+         #else
+             5
+         #endif",
+        "2 5",
+    );
+
+    // Check that #else must appear in a block
+    check_preprocessing_error(
+        "#else
+         aaa",
+        PreprocessorError::ElseOutsideOfBlock,
+    );
+
+    // Check that else can only appear once in a block, when skipping or not.
+    check_preprocessing_error(
+        "#if 0
+         #else
+         #else
+         #endif",
+        PreprocessorError::MoreThanOneElse,
+    );
+    check_preprocessing_error(
+        "#if 0
+            #if 0
+            #else
+            #else
+            #endif
+         #endif",
+        PreprocessorError::MoreThanOneElse,
+    );
+
+    // Check that else isn't taken if at least one block was taken.
+    check_preprocessed_result(
+        "#if 1
+             A
+         #else
+             B
+         #endif
+         #if 0
+             C
+         #elif 1
+             D
+         #else
+             E
+         #endif",
+        "A D",
+    );
+
+    // Check that else isn't taken if it's skipped from the outside.
+    check_preprocessed_result(
+        "#if 0
+             #if 0
+             #else
+                FOO
+             #endif
+         #endif",
+        "",
+    );
+}
+
+#[test]
 fn parse_endif() {
     // Basic test of using endif
     check_preprocessed_result(
         "#if 0
          a
-         #endif",
-        "",
+         #endif
+         b",
+        "b",
     );
 
     // Check that extra tokens are disallowed.
@@ -615,6 +802,15 @@ fn parse_endif() {
          #endif",
         PreprocessorError::UnfinishedBlock,
     );
+
+    // Check that endif must be well nested with ifs.
+    check_preprocessing_error("#endif", PreprocessorError::EndifOutsideOfBlock);
+    check_preprocessing_error(
+        "#if 1
+         #endif
+         #endif",
+        PreprocessorError::EndifOutsideOfBlock,
+    );
 }
 
 #[test]
@@ -622,14 +818,14 @@ fn skipping_behavior() {
     // Check regular tokens are skipped
     check_preprocessed_result(
         "#if 0
-         a b % 1 2u
+             a b % 1 2u
          #endif",
         "",
     );
     // Check random hash is allowed while skipping
     check_preprocessed_result(
         "#if 0
-         a # b
+             a # b
          #endif",
         "",
     );
@@ -637,7 +833,7 @@ fn skipping_behavior() {
     // Check that a hash at the start of the line and nothing else if valid while skipping
     check_preprocessed_result(
         "#if 0
-         #
+             #
          #endif",
         "",
     );
@@ -645,7 +841,7 @@ fn skipping_behavior() {
     // Check invalid directives are allowed while skipping
     check_preprocessed_result(
         "#if 0
-         #CestlafauteaNandi
+             #CestlafauteaNandi
          #endif",
         "",
     );
@@ -653,7 +849,7 @@ fn skipping_behavior() {
     // Check that defines skipped (otherwise there would be a redefinition error)
     check_preprocessed_result(
         "#if 0
-         #define A 1
+             #define A 1
          #endif
          #define A 2",
         "",
@@ -663,7 +859,7 @@ fn skipping_behavior() {
     check_preprocessed_result(
         "#define A 1
          #if 0
-         #undef A
+             #undef A
          #endif
          A",
         "1",
@@ -672,9 +868,18 @@ fn skipping_behavior() {
     // Check that #error is skipped.
     check_preprocessed_result(
         "#if 0
-         #error
+             #error
          #endif",
         "",
+    );
+
+    // Check that #line directives are skipped.
+    check_preprocessed_result(
+        "#if 0
+             #line 1000
+         #endif
+         __LINE__",
+        "4",
     );
 }
 
@@ -699,6 +904,13 @@ fn parse_line() {
         PreprocessorError::UnexpectedToken(TokenValue::Ident("foo".into())),
     );
 
+    // Test that an invalid #line directive is allowed if skipping
+    check_preprocessed_result(
+        "#if 0
+         #line !
+         #endif",
+        "",
+    );
     // Test that #line must have a newline after the integer (this will change when #line
     // supports constant expressions)
     check_preprocessing_error("#line 1 #", PreprocessorError::UnexpectedHash);

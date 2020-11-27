@@ -75,7 +75,11 @@ pub enum PreprocessorError {
     DuplicateParameter,
     UnknownDirective,
     DefineRedefined,
+    ElifOutsideOfBlock,
+    ElseOutsideOfBlock,
     EndifOutsideOfBlock,
+    ElifAfterElse,
+    MoreThanOneElse,
     UnfinishedBlock,
     LineOverflow,
 }

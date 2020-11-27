@@ -67,6 +67,8 @@ fn make_line_overflow_error(location: Location) -> StepExit {
 
 struct DirectiveBlock {
     start_location: Location,
+    had_valid_segment: bool,
+    had_else: bool,
     outer_skipped: bool,
 }
 
@@ -159,6 +161,7 @@ impl<'a> DirectiveProcessor<'a> {
 
     fn consume_until_newline(&mut self) -> Step<()> {
         loop {
+            // TODO allow unexpected character errors because we are skipping.
             if let LexerTokenValue::NewLine = self.get_lexer_token()?.value {
                 return Ok(());
             }
@@ -280,6 +283,10 @@ impl<'a> DirectiveProcessor<'a> {
     }
 
     fn parse_line_directive(&mut self, directive_location: Location) -> Step<()> {
+        if self.skipping {
+            return self.consume_until_newline();
+        }
+
         let token = self.expect_a_lexer_token(directive_location)?;
 
         // TODO support expressions for the line number.
@@ -333,22 +340,75 @@ impl<'a> DirectiveProcessor<'a> {
         })
     }
 
-    fn parse_endif_directive(&mut self, directive_location: Location) -> Step<()> {
-        if let Some(block) = self.blocks.pop() {
-            // After #endif we start processing tokens iff the block was not skipped.
-            self.skipping = block.outer_skipped;
+    fn parse_elif_directive(&mut self, directive_location: Location) -> Step<()> {
+        self.skipping = true;
 
-            if self.skipping {
-                self.consume_until_newline()
-            } else {
-                self.expect_lexer_token(LexerTokenValue::NewLine, directive_location)?;
-                Ok(())
+        // Do checks that the #elif block is well structured even if skipping.
+        let block = self.blocks.last().ok_or(StepExit::Error((
+            PreprocessorError::ElifOutsideOfBlock,
+            directive_location,
+        )))?;
+
+        if block.had_else {
+            return Err(StepExit::Error((
+                PreprocessorError::ElifAfterElse,
+                directive_location,
+            )));
+        }
+
+        // The condition isn't parsed if it doesn't need to (and doesn't produce errors).
+        if block.outer_skipped || block.had_valid_segment {
+            return self.consume_until_newline();
+        }
+
+        if let LexerTokenValue::Int(value) = self.expect_a_lexer_token(directive_location)?.value {
+            if value != 0 {
+                self.skipping = false;
+                self.blocks.last_mut().unwrap().had_valid_segment = true;
             }
         } else {
+            // TODO, so much to do here xD
+            todo!();
+        }
+
+        Ok(())
+    }
+
+    fn parse_else_directive(&mut self, directive_location: Location) -> Step<()> {
+        self.expect_lexer_token(LexerTokenValue::NewLine, directive_location)?;
+
+        let block = self.blocks.last_mut().ok_or(StepExit::Error((
+            PreprocessorError::ElseOutsideOfBlock,
+            directive_location,
+        )))?;
+
+        // #else can only appear once in a block.
+        if block.had_else {
             Err(StepExit::Error((
-                PreprocessorError::EndifOutsideOfBlock,
+                PreprocessorError::MoreThanOneElse,
                 directive_location,
             )))
+        } else {
+            self.skipping = block.outer_skipped || block.had_valid_segment;
+            block.had_else = true;
+            Ok(())
+        }
+    }
+
+    fn parse_endif_directive(&mut self, directive_location: Location) -> Step<()> {
+        let block = self.blocks.pop().ok_or(StepExit::Error((
+            PreprocessorError::EndifOutsideOfBlock,
+            directive_location,
+        )))?;
+
+        // After #endif we start processing tokens iff the block was not skipped.
+        self.skipping = block.outer_skipped;
+
+        if self.skipping {
+            self.consume_until_newline()
+        } else {
+            self.expect_lexer_token(LexerTokenValue::NewLine, directive_location)?;
+            Ok(())
         }
     }
 
@@ -360,6 +420,8 @@ impl<'a> DirectiveProcessor<'a> {
         if self.skipping {
             self.blocks.push(DirectiveBlock {
                 start_location: directive_location,
+                had_valid_segment: false,
+                had_else: false,
                 outer_skipped: true,
             });
             self.consume_until_newline()
@@ -369,6 +431,8 @@ impl<'a> DirectiveProcessor<'a> {
 
             self.blocks.push(DirectiveBlock {
                 start_location: directive_location,
+                had_valid_segment: !self.skipping,
+                had_else: false,
                 outer_skipped: false,
             });
             Ok(())
@@ -390,6 +454,8 @@ impl<'a> DirectiveProcessor<'a> {
                 "if" => self.parse_if_directive(token.location),
                 "ifdef" => self.parse_ifdef_directive(token.location),
                 "ifndef" => self.parse_ifndef_directive(token.location),
+                "elif" => self.parse_elif_directive(token.location),
+                "else" => self.parse_else_directive(token.location),
                 "endif" => self.parse_endif_directive(token.location),
 
                 _ => {
@@ -414,6 +480,7 @@ impl<'a> DirectiveProcessor<'a> {
 impl<'a> MELexer for DirectiveProcessor<'a> {
     fn step(&mut self) -> Step<Token> {
         let step = (|| {
+            // TODO: if we are skipping invalid characters should be allowed.
             let lexer_token = self.get_lexer_token()?;
             match lexer_token.value {
                 LexerTokenValue::NewLine => Continue.into(),
