@@ -344,24 +344,22 @@ impl<'a> DirectiveProcessor<'a> {
         self.skipping = true;
 
         // Do checks that the #elif block is well structured even if skipping.
-        if let Some(block) = self.blocks.last() {
-            if block.had_else {
-                return Err(StepExit::Error((
-                    PreprocessorError::ElifAfterElse,
-                    directive_location,
-                )));
-            }
+        let block = self.blocks.last().ok_or(StepExit::Error((
+            PreprocessorError::ElifOutsideOfBlock,
+            directive_location,
+        )))?;
 
-            // The condition isn't parsed if it doesn't need to (and doesn't produce errors).
-            if block.outer_skipped || block.had_valid_segment {
-                return self.consume_until_newline();
-            }
-        } else {
+        if block.had_else {
             return Err(StepExit::Error((
-                PreprocessorError::ElifOutsideOfBlock,
+                PreprocessorError::ElifAfterElse,
                 directive_location,
             )));
-        };
+        }
+
+        // The condition isn't parsed if it doesn't need to (and doesn't produce errors).
+        if block.outer_skipped || block.had_valid_segment {
+            return self.consume_until_newline();
+        }
 
         if let LexerTokenValue::Int(value) = self.expect_a_lexer_token(directive_location)?.value {
             if value != 0 {
@@ -379,42 +377,38 @@ impl<'a> DirectiveProcessor<'a> {
     fn parse_else_directive(&mut self, directive_location: Location) -> Step<()> {
         self.expect_lexer_token(LexerTokenValue::NewLine, directive_location)?;
 
-        if let Some(block) = self.blocks.last_mut() {
-            // #else can only appear once in a block.
-            if block.had_else {
-                Err(StepExit::Error((
-                    PreprocessorError::MoreThanOneElse,
-                    directive_location,
-                )))
-            } else {
-                self.skipping = block.outer_skipped || block.had_valid_segment;
-                block.had_else = true;
-                Ok(())
-            }
-        } else {
+        let block = self.blocks.last_mut().ok_or(StepExit::Error((
+            PreprocessorError::ElseOutsideOfBlock,
+            directive_location,
+        )))?;
+
+        // #else can only appear once in a block.
+        if block.had_else {
             Err(StepExit::Error((
-                PreprocessorError::ElseOutsideOfBlock,
+                PreprocessorError::MoreThanOneElse,
                 directive_location,
             )))
+        } else {
+            self.skipping = block.outer_skipped || block.had_valid_segment;
+            block.had_else = true;
+            Ok(())
         }
     }
 
     fn parse_endif_directive(&mut self, directive_location: Location) -> Step<()> {
-        if let Some(block) = self.blocks.pop() {
-            // After #endif we start processing tokens iff the block was not skipped.
-            self.skipping = block.outer_skipped;
+        let block = self.blocks.pop().ok_or(StepExit::Error((
+            PreprocessorError::EndifOutsideOfBlock,
+            directive_location,
+        )))?;
 
-            if self.skipping {
-                self.consume_until_newline()
-            } else {
-                self.expect_lexer_token(LexerTokenValue::NewLine, directive_location)?;
-                Ok(())
-            }
+        // After #endif we start processing tokens iff the block was not skipped.
+        self.skipping = block.outer_skipped;
+
+        if self.skipping {
+            self.consume_until_newline()
         } else {
-            Err(StepExit::Error((
-                PreprocessorError::EndifOutsideOfBlock,
-                directive_location,
-            )))
+            self.expect_lexer_token(LexerTokenValue::NewLine, directive_location)?;
+            Ok(())
         }
     }
 
