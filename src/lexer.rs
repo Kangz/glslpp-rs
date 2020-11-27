@@ -52,7 +52,7 @@ impl<'a> Iterator for CharsAndLocation<'a> {
                 Some(('\n', current_loc))
             }
             '\r' => {
-                // Consume the token but see if we can grab a \r that follows
+                // Consume the token but see if we can grab a \n that follows
                 self.input = chars.as_str();
                 if chars.next() == Some('\n') {
                     self.input = chars.as_str();
@@ -123,6 +123,11 @@ pub struct ReplaceComments<'a> {
     inner: SkipBackslashNewline<'a>,
 }
 
+// The lexer wants to know when whitespace is a comment to know if a comment was ever processed.
+// To avoid adding state we use a sentinel value of '\r' because all '\r' have been consumed and
+// turned into '\n' by CharsAndLocation.
+pub const COMMENT_SENTINEL_VALUE: char = '\r';
+
 impl<'a> ReplaceComments<'a> {
     pub fn new(input: &'a str) -> Self {
         ReplaceComments {
@@ -138,6 +143,7 @@ impl<'a> Iterator for ReplaceComments<'a> {
         let current = self.inner.next()?;
 
         if current.0 != '/' {
+            assert!(current.0 != COMMENT_SENTINEL_VALUE);
             return Some(current);
         }
 
@@ -153,7 +159,7 @@ impl<'a> Iterator for ReplaceComments<'a> {
                     save_point = self.inner
                 }
                 self.inner = save_point;
-                Some((' ', current.1))
+                Some((COMMENT_SENTINEL_VALUE, current.1))
             }
 
             // The /* case, consume until the next */
@@ -165,7 +171,7 @@ impl<'a> Iterator for ReplaceComments<'a> {
                     }
                     was_star = next == '*';
                 }
-                Some((' ', current.1))
+                Some((COMMENT_SENTINEL_VALUE, current.1))
             }
 
             // Not // or /*, do nothing
@@ -216,6 +222,7 @@ pub struct Lexer<'a> {
     leading_whitespace: bool,
     start_of_line: bool,
     last_location: Location,
+    had_comments: bool,
 }
 
 impl<'a> Lexer<'a> {
@@ -226,7 +233,12 @@ impl<'a> Lexer<'a> {
             leading_whitespace: true,
             start_of_line: true,
             last_location: Location { line: 0, pos: 0 },
+            had_comments: false,
         }
+    }
+
+    pub fn had_comments(&self) -> bool {
+        self.had_comments
     }
 
     fn parse_identifier(&mut self) -> Result<TokenValue, PreprocessorError> {
@@ -405,7 +417,10 @@ impl<'a> Iterator for Lexer<'a> {
             self.start_of_line = false;
 
             let value = match current_char {
-                ' ' | '\t' | '\x0b' | '\x0c' => {
+                ' ' | '\t' | '\x0b' | '\x0c' | COMMENT_SENTINEL_VALUE => {
+                    if current_char == COMMENT_SENTINEL_VALUE {
+                        self.had_comments = true;
+                    }
                     self.start_of_line = was_start_of_line;
                     self.leading_whitespace = true;
                     self.inner.next();
