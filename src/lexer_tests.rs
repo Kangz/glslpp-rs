@@ -1,5 +1,6 @@
 use super::lexer::{
     CharsAndLocation, Lexer, LexerItem, ReplaceComments, SkipBackslashNewline, Token, TokenValue,
+    COMMENT_SENTINEL_VALUE,
 };
 use super::token::{Location, PreprocessorError, Punct};
 
@@ -114,54 +115,54 @@ fn replace_comments() {
     // Test a single-line comment
     let mut it = ReplaceComments::new("a//foo\nb");
     assert_eq!(it.next(), c(1, 0, 'a'));
-    assert_eq!(it.next(), c(1, 1, ' '));
+    assert_eq!(it.next(), c(1, 1, COMMENT_SENTINEL_VALUE));
     assert_eq!(it.next(), c(1, 6, '\n'));
     assert_eq!(it.next(), c(2, 0, 'b'));
     assert_eq!(it.next(), None);
 
     // Test a single-line comment without an ending newline
     let mut it = ReplaceComments::new("//foo");
-    assert_eq!(it.next(), c(1, 0, ' '));
+    assert_eq!(it.next(), c(1, 0, COMMENT_SENTINEL_VALUE));
     assert_eq!(it.next(), None);
 
     // Test a single-line comment without nothing afterwards
     let mut it = ReplaceComments::new("//");
-    assert_eq!(it.next(), c(1, 0, ' '));
+    assert_eq!(it.next(), c(1, 0, COMMENT_SENTINEL_VALUE));
     assert_eq!(it.next(), None);
 
     // Test a single-line comment with a line continuation
     let mut it = ReplaceComments::new("//foo\\\na");
-    assert_eq!(it.next(), c(1, 0, ' '));
+    assert_eq!(it.next(), c(1, 0, COMMENT_SENTINEL_VALUE));
     assert_eq!(it.next(), None);
 
     // Test a single-line comment with a line continuation
     let mut it = ReplaceComments::new("//foo\\\na");
-    assert_eq!(it.next(), c(1, 0, ' '));
+    assert_eq!(it.next(), c(1, 0, COMMENT_SENTINEL_VALUE));
     assert_eq!(it.next(), None);
 
     // Test a multi-line comment
     let mut it = ReplaceComments::new("a/*fo\n\no*/b");
     assert_eq!(it.next(), c(1, 0, 'a'));
-    assert_eq!(it.next(), c(1, 1, ' '));
+    assert_eq!(it.next(), c(1, 1, COMMENT_SENTINEL_VALUE));
     assert_eq!(it.next(), c(3, 3, 'b'));
     assert_eq!(it.next(), None);
 
     // Test a multi-line comment, without a proper ending (only the *)
     let mut it = ReplaceComments::new("a/*fo\n\no*");
     assert_eq!(it.next(), c(1, 0, 'a'));
-    assert_eq!(it.next(), c(1, 1, ' '));
+    assert_eq!(it.next(), c(1, 1, COMMENT_SENTINEL_VALUE));
     assert_eq!(it.next(), None);
 
     // Test a multi-line comment, without a proper ending (nothing)
     let mut it = ReplaceComments::new("a/*fo\n\no");
     assert_eq!(it.next(), c(1, 0, 'a'));
-    assert_eq!(it.next(), c(1, 1, ' '));
+    assert_eq!(it.next(), c(1, 1, COMMENT_SENTINEL_VALUE));
     assert_eq!(it.next(), None);
 
     // Test a multi-line comment, or /*/ not being a complete one
     let mut it = ReplaceComments::new("a/*/b");
     assert_eq!(it.next(), c(1, 0, 'a'));
-    assert_eq!(it.next(), c(1, 1, ' '));
+    assert_eq!(it.next(), c(1, 1, COMMENT_SENTINEL_VALUE));
     assert_eq!(it.next(), None);
 }
 
@@ -615,6 +616,50 @@ fn lex_punctuation() {
         unwrap_error(it.next()),
         PreprocessorError::UnexpectedCharacter
     );
+}
+
+#[test]
+fn lex_had_comments() {
+    // Test that had_comments doesn't get set to true if there is no comments.
+    let mut it = Lexer::new("#version");
+    assert!(!it.had_comments());
+    assert_eq!(unwrap_token_value(it.next()), TokenValue::Hash);
+    assert!(!it.had_comments());
+    assert_eq!(
+        unwrap_token_value(it.next()),
+        TokenValue::Ident("version".to_string())
+    );
+    assert!(!it.had_comments());
+    expect_lexer_end(&mut it);
+
+    // Test that had_comments doesn't get triggered by its sentinel value of '\r'
+    let mut it = Lexer::new("\r!");
+    assert!(!it.had_comments());
+    assert_eq!(unwrap_token_value(it.next()), TokenValue::NewLine);
+    assert_eq!(unwrap_token_value(it.next()), Punct::Bang.into());
+    assert!(!it.had_comments());
+    expect_lexer_end(&mut it);
+
+    // Test that had_comments gets triggered by // comments
+    let mut it = Lexer::new("//\n!");
+    assert!(!it.had_comments());
+    assert_eq!(unwrap_token_value(it.next()), TokenValue::NewLine);
+    assert!(it.had_comments());
+    assert_eq!(unwrap_token_value(it.next()), Punct::Bang.into());
+    assert!(it.had_comments());
+    expect_lexer_end(&mut it);
+
+    // Test that had_comments doesn't gets triggered by /**/ comments
+    let mut it = Lexer::new("/**/#version");
+    assert!(!it.had_comments());
+    assert_eq!(unwrap_token_value(it.next()), TokenValue::Hash);
+    assert!(it.had_comments());
+    assert_eq!(
+        unwrap_token_value(it.next()),
+        TokenValue::Ident("version".to_string())
+    );
+    assert!(it.had_comments());
+    expect_lexer_end(&mut it);
 }
 
 // TODO test has_whitespace
