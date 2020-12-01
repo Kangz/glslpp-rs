@@ -1,6 +1,6 @@
 use super::lexer::{self, Token as LexerToken, TokenValue as LexerTokenValue};
 use super::pp::{convert_lexer_token, Preprocessor, PreprocessorItem};
-use super::token::{Location, PreprocessorError, Punct, Token, TokenValue};
+use super::token::{Integer, Location, PreprocessorError, Punct, Token, TokenValue};
 
 struct NoopPreprocessor<'a> {
     lexer: lexer::Lexer<'a>,
@@ -879,7 +879,7 @@ fn skipping_behavior() {
              #line 1000
          #endif
          __LINE__",
-        "4",
+        "4u",
     );
 
     // Check that #version/extension/pragma are skipped.
@@ -932,10 +932,10 @@ fn parse_line() {
     //     PreprocessorError::LineOverflow,
     // );
 
-    // test that the integer must fit in a i32
-    check_preprocessing_error("#line 2147483648u", PreprocessorError::LineOverflow);
-    // test that the integer must fit in a i32
-    check_preprocessed_result("#line 2147483647u", "");
+    // test that the integer must fit in a u32
+    check_preprocessing_error("#line 4294967296u", PreprocessorError::LineOverflow);
+    // test that the integer must fit in a u32
+    check_preprocessed_result("#line 4294967295u", "");
 }
 
 #[test]
@@ -946,18 +946,18 @@ fn line_define() {
          __LINE__
 
          __LINE__",
-        "1 2 4",
+        "1u 2u 4u",
     );
 
     // Test that __LINE__ split over multiple lines gives the first line.
-    check_preprocessed_result("__L\\\nINE__", "1");
+    check_preprocessed_result("__L\\\nINE__", "1u");
 
     // Test that the __LINE__ define used in define gives the invocation's line
     check_preprocessed_result(
         "#define MY_DEFINE __LINE__
          MY_DEFINE
          MY\\\n_DEFINE",
-        "2 3",
+        "2u 3u",
     );
 
     // Test a corner case where the __LINE__ is a peeked token for function-like
@@ -965,7 +965,7 @@ fn line_define() {
     check_preprocessed_result(
         "#define A(foo) Bleh
          A __LINE__ B",
-        "A 2 B",
+        "A 2u B",
     );
 
     // Test that __LINE__ inside function like defines is the position of the closing )
@@ -975,8 +975,8 @@ fn line_define() {
          A(-, -)
          A(-, -
          )",
-        "- 3 - + 3 +
-         - 5 - + 5 +",
+        "- 3u - + 3u +
+         - 5u - + 5u +",
     );
 
     // Test that the __LINE__ inside a define's argument get the correct value.
@@ -984,13 +984,13 @@ fn line_define() {
         "#define A(X) X
          A(__LINE__
          __LINE__)",
-        "2 3",
+        "2u 3u",
     );
     check_preprocessed_result(
         "#define B(X) X
          #define A(X) B(X) + __LINE__
          A(__LINE__)",
-        "3 + 3",
+        "3u + 3u",
     );
 
     // Check that #line is taken into account and can modify the line number in both directions.
@@ -1002,17 +1002,17 @@ fn line_define() {
          #line 0
          __LINE__
          __LINE__",
-        "1001 1002 1 2",
+        "1001u 1002u 1u 2u",
     );
 
-    // Check that line computations are not allowed to overflow an i32
+    // Check that line computations are not allowed to overflow an u32
     check_preprocessed_result(
-        "#line 2147483646
+        "#line 4294967294
          __LINE__",
-        "2147483647",
+        "4294967295u",
     );
     check_preprocessing_error(
-        "#line 2147483647
+        "#line 4294967295
          __LINE__",
         PreprocessorError::LineOverflow,
     );
@@ -1031,12 +1031,19 @@ fn parse_version() {
             assert!(!version.has_comments_before);
             assert!(version.is_first_directive);
             assert_eq!(version.tokens.len(), 3);
-            assert_eq!(version.tokens[0].value, TokenValue::Int(1));
+            assert_eq!(
+                version.tokens[0].value,
+                TokenValue::Integer(Integer {
+                    value: 1,
+                    signed: true,
+                    width: 32
+                })
+            );
             assert_eq!(version.tokens[1].value, TokenValue::Punct(Punct::Semicolon));
             assert_eq!(version.tokens[2].value, TokenValue::Punct(Punct::LeftParen));
         }
         _ => {
-            assert!(false);
+            unreachable!();
         }
     };
 
@@ -1054,7 +1061,7 @@ fn parse_version() {
             assert_eq!(version.tokens[0].value, TokenValue::Punct(Punct::LeftParen));
         }
         _ => {
-            assert!(false);
+            unreachable!();
         }
     };
 
@@ -1072,7 +1079,7 @@ fn parse_version() {
             assert_eq!(version.tokens[0].value, TokenValue::Punct(Punct::LeftParen));
         }
         _ => {
-            assert!(false);
+            unreachable!();
         }
     };
 
@@ -1090,7 +1097,7 @@ fn parse_version() {
             assert_eq!(version.tokens[0].value, TokenValue::Punct(Punct::LeftParen));
         }
         _ => {
-            assert!(false);
+            unreachable!();
         }
     };
 }
@@ -1119,7 +1126,7 @@ fn parse_extension() {
             );
         }
         _ => {
-            assert!(false);
+            unreachable!();
         }
     };
 
@@ -1135,7 +1142,7 @@ fn parse_extension() {
             assert_eq!(extension.tokens.len(), 0);
         }
         _ => {
-            assert!(false);
+            unreachable!();
         }
     };
 }
@@ -1154,7 +1161,7 @@ fn parse_pragma() {
             assert_eq!(pragma.tokens[0].value, TokenValue::Ident("stuff".into()));
         }
         _ => {
-            assert!(false);
+            unreachable!();
         }
     };
 }
