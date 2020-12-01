@@ -1,5 +1,4 @@
-use crate::token::{Location, PreprocessorError, Punct};
-use std::convert::TryFrom;
+use crate::token::{Integer, Location, PreprocessorError, Punct};
 use std::iter::Peekable;
 
 type CharAndLocation = (char, Location);
@@ -196,8 +195,7 @@ pub enum TokenValue {
 
     // Regular token values
     Ident(String),
-    Int(i32),
-    UInt(u32),
+    Integer(Integer),
     //Float(f32), // TODO
     Punct(Punct),
 }
@@ -260,20 +258,21 @@ impl<'a> Lexer<'a> {
         Ok(TokenValue::Ident(identifier))
     }
 
-    // Parses the u or U suffix for integers and returns the correct Token variant.
-    fn modify_with_integer_suffix(
-        &mut self,
-        unsigned_value: u32,
-    ) -> Result<TokenValue, PreprocessorError> {
+    fn parse_integer_signedness_suffix(&mut self) -> Result<bool, PreprocessorError> {
         match self.inner.peek() {
             Some(('u', _)) | Some(('U', _)) => {
                 self.inner.next();
-                Ok(TokenValue::UInt(unsigned_value))
+                Ok(false)
             }
-            _ => match i32::try_from(unsigned_value) {
-                Err(_) => Err(PreprocessorError::IntegerOverflow),
-                Ok(value) => Ok(TokenValue::Int(value)),
-            },
+            _ => Ok(true),
+        }
+    }
+
+    fn parse_integer_width_suffix(&mut self) -> Result<i32, PreprocessorError> {
+        match self.inner.peek() {
+            Some(('l', _)) | Some(('L', _)) => Err(PreprocessorError::NotSupported64BitLiteral),
+            Some(('s', _)) | Some(('S', _)) => Err(PreprocessorError::NotSupported16BitLiteral),
+            _ => Ok(32),
         }
     }
 
@@ -281,7 +280,7 @@ impl<'a> Lexer<'a> {
         &mut self,
         radix: u32,
         filter: impl Fn(char) -> bool,
-    ) -> Result<u32, PreprocessorError> {
+    ) -> Result<u64, PreprocessorError> {
         let mut number = String::default();
 
         while let Some(&(current, _)) = self.inner.peek() {
@@ -293,15 +292,15 @@ impl<'a> Lexer<'a> {
             }
         }
 
-        u32::from_str_radix(&number, radix).map_err(|_err| PreprocessorError::IntegerOverflow)
+        u64::from_str_radix(&number, radix).map_err(|_err| PreprocessorError::IntegerOverflow)
     }
 
     fn parse_number(&mut self) -> Result<TokenValue, PreprocessorError> {
         // 0 is used as the first char for non-decimal numbers
-        if let Some(('0', _)) = self.inner.peek() {
+        let value = if let Some(('0', _)) = self.inner.peek() {
             self.inner.next();
 
-            let unsigned_value = match self.inner.peek() {
+            match self.inner.peek() {
                 Some(('x', _)) => {
                     self.inner.next();
                     self.parse_number_radix(16, |c| match c {
@@ -310,16 +309,19 @@ impl<'a> Lexer<'a> {
                     })?
                 }
                 Some(('0'..='7', _)) => self.parse_number_radix(8, |c| c >= '0' && c <= '7')?,
-                _ => 0u32,
-            };
-
-            self.modify_with_integer_suffix(unsigned_value)
+                _ => 0u64,
+            }
         } else {
-            let unsigned_value = self.parse_number_radix(10, |c| c >= '0' && c <= '9')?;
-            self.modify_with_integer_suffix(unsigned_value)
+            self.parse_number_radix(10, |c| c >= '0' && c <= '9')?
+        };
 
-            //TODO handle floats?
-        }
+        Ok(TokenValue::Integer(Integer {
+            value,
+            signed: self.parse_integer_signedness_suffix()?,
+            width: self.parse_integer_width_suffix()?,
+        }))
+
+        //TODO handle floats?
     }
 
     fn parse_punctuation(&mut self) -> Result<TokenValue, PreprocessorError> {

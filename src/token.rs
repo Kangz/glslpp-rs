@@ -82,6 +82,15 @@ pub enum PreprocessorError {
     MoreThanOneElse,
     UnfinishedBlock,
     LineOverflow,
+    NotSupported16BitLiteral,
+    NotSupported64BitLiteral,
+}
+
+#[derive(Clone, PartialEq, Debug)]
+pub struct Integer {
+    pub value: u64,
+    pub signed: bool,
+    pub width: i32,
 }
 
 #[derive(Clone, PartialEq, Debug)]
@@ -106,8 +115,7 @@ pub struct Pragma {
 pub enum TokenValue {
     Ident(String),
 
-    Int(i32),
-    UInt(u32),
+    Integer(Integer),
     //Float(f32), // TODO
     Punct(Punct),
 

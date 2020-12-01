@@ -2,7 +2,7 @@ use super::lexer::{
     CharsAndLocation, Lexer, LexerItem, ReplaceComments, SkipBackslashNewline, Token, TokenValue,
     COMMENT_SENTINEL_VALUE,
 };
-use super::token::{Location, PreprocessorError, Punct};
+use super::token::{Integer, Location, PreprocessorError, Punct};
 
 fn c(line: u32, pos: u32, c: char) -> Option<(char, Location)> {
     Some((c, Location { line, pos }))
@@ -23,6 +23,26 @@ fn unwrap_error(item: Option<LexerItem>) -> PreprocessorError {
 fn expect_lexer_end(lexer: &mut Lexer) {
     assert_eq!(unwrap_token_value(lexer.next()), TokenValue::NewLine);
     assert_eq!(lexer.next(), None);
+}
+
+impl From<i32> for TokenValue {
+    fn from(value: i32) -> Self {
+        TokenValue::Integer(Integer {
+            value: value as u64,
+            signed: true,
+            width: 32,
+        })
+    }
+}
+
+impl From<u32> for TokenValue {
+    fn from(value: u32) -> Self {
+        TokenValue::Integer(Integer {
+            value: value as u64,
+            signed: false,
+            width: 32,
+        })
+    }
 }
 
 #[test]
@@ -219,7 +239,7 @@ fn lex_metadata() {
     assert_eq!(
         unwrap_token(it.next()),
         Token {
-            value: TokenValue::Int(1),
+            value: 1.into(),
             location: Location { line: 1, pos: 0 },
             leading_whitespace: true,
             start_of_line: true
@@ -234,7 +254,7 @@ fn lex_metadata() {
     assert_eq!(
         unwrap_token(it.next()),
         Token {
-            value: TokenValue::Int(1),
+            value: 1.into(),
             location: Location { line: 1, pos: 1 },
             leading_whitespace: true,
             start_of_line: true
@@ -245,7 +265,7 @@ fn lex_metadata() {
     assert_eq!(
         unwrap_token(it.next()),
         Token {
-            value: TokenValue::Int(2),
+            value: 2.into(),
             location: Location { line: 2, pos: 2 },
             leading_whitespace: true,
             start_of_line: false
@@ -254,7 +274,7 @@ fn lex_metadata() {
     assert_eq!(
         unwrap_token(it.next()),
         Token {
-            value: TokenValue::Int(3),
+            value: 3.into(),
             location: Location { line: 2, pos: 4 },
             leading_whitespace: true,
             start_of_line: false
@@ -284,7 +304,7 @@ fn lex_metadata() {
     assert_eq!(
         unwrap_token(it.next()),
         Token {
-            value: TokenValue::Int(4),
+            value: 4.into(),
             location: Location { line: 3, pos: 0 },
             leading_whitespace: true,
             start_of_line: true
@@ -354,15 +374,15 @@ fn lex_identifiers() {
 fn lex_decimal() {
     // Test some basic cases
     let mut it = Lexer::new("1 0u 42 65536U");
-    assert_eq!(unwrap_token_value(it.next()), TokenValue::Int(1));
-    assert_eq!(unwrap_token_value(it.next()), TokenValue::UInt(0));
-    assert_eq!(unwrap_token_value(it.next()), TokenValue::Int(42));
-    assert_eq!(unwrap_token_value(it.next()), TokenValue::UInt(65536));
+    assert_eq!(unwrap_token_value(it.next()), 1.into());
+    assert_eq!(unwrap_token_value(it.next()), 0u32.into());
+    assert_eq!(unwrap_token_value(it.next()), 42.into());
+    assert_eq!(unwrap_token_value(it.next()), 65536u32.into());
     expect_lexer_end(&mut it);
 
     // Test splitting with identifiers
     let mut it = Lexer::new("31ab");
-    assert_eq!(unwrap_token_value(it.next()), TokenValue::Int(31));
+    assert_eq!(unwrap_token_value(it.next()), 31.into());
     assert_eq!(
         unwrap_token_value(it.next()),
         TokenValue::Ident("ab".to_string())
@@ -371,66 +391,86 @@ fn lex_decimal() {
 
     // Test splitting with whitespace
     let mut it = Lexer::new("31/**/32");
-    assert_eq!(unwrap_token_value(it.next()), TokenValue::Int(31));
-    assert_eq!(unwrap_token_value(it.next()), TokenValue::Int(32));
+    assert_eq!(unwrap_token_value(it.next()), 31.into());
+    assert_eq!(unwrap_token_value(it.next()), 32.into());
     expect_lexer_end(&mut it);
 
     // Test splitting with punctuation
     let mut it = Lexer::new("31+32");
-    assert_eq!(unwrap_token_value(it.next()), TokenValue::Int(31));
+    assert_eq!(unwrap_token_value(it.next()), 31.into());
     assert_eq!(unwrap_token_value(it.next()), Punct::Plus.into());
-    assert_eq!(unwrap_token_value(it.next()), TokenValue::Int(32));
+    assert_eq!(unwrap_token_value(it.next()), 32.into());
     expect_lexer_end(&mut it);
 
-    // Test 2^31 - 1 works in signed mode.
-    let mut it = Lexer::new("2147483647");
-    assert_eq!(unwrap_token_value(it.next()), TokenValue::Int(2147483647));
-    expect_lexer_end(&mut it);
-
-    // Test 2^31 signed overflows and is an error
-    let mut it = Lexer::new("2147483648");
+    // Test that 2^64 produces an overflow error but that 2^64-1 correctly parses (even if it might
+    // produce an error down the line).
+    let mut it = Lexer::new("18446744073709551616");
     assert_eq!(unwrap_error(it.next()), PreprocessorError::IntegerOverflow);
-
-    // Test 2^31 works in unsigned mode
-    let mut it = Lexer::new("2147483648u");
+    let mut it = Lexer::new("18446744073709551615");
     assert_eq!(
         unwrap_token_value(it.next()),
-        TokenValue::UInt(2147483648u32)
+        TokenValue::Integer(Integer {
+            value: 18446744073709551615,
+            signed: true,
+            width: 32
+        })
     );
     expect_lexer_end(&mut it);
 
-    // Test 2^32 - 1 works in unsigned mode.
-    let mut it = Lexer::new("4294967295u");
+    // Check that the 16bit or 64bit suffixes produce errors (for now).
+    let mut it = Lexer::new("13s");
     assert_eq!(
-        unwrap_token_value(it.next()),
-        TokenValue::UInt(4294967295u32)
+        unwrap_error(it.next()),
+        PreprocessorError::NotSupported16BitLiteral
     );
-    expect_lexer_end(&mut it);
+    let mut it = Lexer::new("13S");
+    assert_eq!(
+        unwrap_error(it.next()),
+        PreprocessorError::NotSupported16BitLiteral
+    );
+    let mut it = Lexer::new("13l");
+    assert_eq!(
+        unwrap_error(it.next()),
+        PreprocessorError::NotSupported64BitLiteral
+    );
+    let mut it = Lexer::new("13L");
+    assert_eq!(
+        unwrap_error(it.next()),
+        PreprocessorError::NotSupported64BitLiteral
+    );
 
-    // Test 2^32 unsigned overflows and is an error
-    let mut it = Lexer::new("4294967296u");
-    assert_eq!(unwrap_error(it.next()), PreprocessorError::IntegerOverflow);
+    // Check that they produce unsupported errors even if they happen with a unsigned suffix too.
+    let mut it = Lexer::new("13uS");
+    assert_eq!(
+        unwrap_error(it.next()),
+        PreprocessorError::NotSupported16BitLiteral
+    );
+    let mut it = Lexer::new("13Ul");
+    assert_eq!(
+        unwrap_error(it.next()),
+        PreprocessorError::NotSupported64BitLiteral
+    );
 }
 
 #[test]
 fn lex_hexadecimal() {
     // Test some basic cases
     let mut it = Lexer::new("0x1 0x0u 0xBaFfe 0xcaFeU");
-    assert_eq!(unwrap_token_value(it.next()), TokenValue::Int(1));
-    assert_eq!(unwrap_token_value(it.next()), TokenValue::UInt(0));
-    assert_eq!(unwrap_token_value(it.next()), TokenValue::Int(0xBAFFE));
-    assert_eq!(unwrap_token_value(it.next()), TokenValue::UInt(0xCAFE));
+    assert_eq!(unwrap_token_value(it.next()), 1.into());
+    assert_eq!(unwrap_token_value(it.next()), 0u32.into());
+    assert_eq!(unwrap_token_value(it.next()), 0xBAFFE.into());
+    assert_eq!(unwrap_token_value(it.next()), 0xCAFEu32.into());
     expect_lexer_end(&mut it);
 
     // Test with redundant zeroes
     let mut it = Lexer::new("0x000 0x000000000000001");
-    assert_eq!(unwrap_token_value(it.next()), TokenValue::Int(0));
-    assert_eq!(unwrap_token_value(it.next()), TokenValue::Int(1));
+    assert_eq!(unwrap_token_value(it.next()), 0.into());
+    assert_eq!(unwrap_token_value(it.next()), 1.into());
     expect_lexer_end(&mut it);
 
     // Test splitting with identifiers
     let mut it = Lexer::new("0x31zb");
-    assert_eq!(unwrap_token_value(it.next()), TokenValue::Int(0x31));
+    assert_eq!(unwrap_token_value(it.next()), 0x31.into());
     assert_eq!(
         unwrap_token_value(it.next()),
         TokenValue::Ident("zb".to_string())
@@ -439,66 +479,52 @@ fn lex_hexadecimal() {
 
     // Test splitting with whitespace
     let mut it = Lexer::new("0x31/**/32");
-    assert_eq!(unwrap_token_value(it.next()), TokenValue::Int(0x31));
-    assert_eq!(unwrap_token_value(it.next()), TokenValue::Int(32));
+    assert_eq!(unwrap_token_value(it.next()), 0x31.into());
+    assert_eq!(unwrap_token_value(it.next()), 32.into());
     expect_lexer_end(&mut it);
 
     // Test splitting with punctuation
     let mut it = Lexer::new("0x31+32");
-    assert_eq!(unwrap_token_value(it.next()), TokenValue::Int(0x31));
+    assert_eq!(unwrap_token_value(it.next()), 0x31.into());
     assert_eq!(unwrap_token_value(it.next()), Punct::Plus.into());
-    assert_eq!(unwrap_token_value(it.next()), TokenValue::Int(32));
+    assert_eq!(unwrap_token_value(it.next()), 32.into());
     expect_lexer_end(&mut it);
 
-    // Test 2^31 - 1 works in signed mode.
-    let mut it = Lexer::new("0x7FFFFFFF");
-    assert_eq!(unwrap_token_value(it.next()), TokenValue::Int(2147483647));
-    expect_lexer_end(&mut it);
-
-    // Test 2^31 signed overflows and is an error
-    let mut it = Lexer::new("0x80000000");
+    // Test that 2^64 produces an overflow error but that 2^64-1 correctly parses (even if it might
+    // produce an error down the line).
+    let mut it = Lexer::new("0x10000000000000000");
     assert_eq!(unwrap_error(it.next()), PreprocessorError::IntegerOverflow);
-
-    // Test 2^31 works in unsigned mode
-    let mut it = Lexer::new("0x80000000u");
+    let mut it = Lexer::new("0xFFFFFFFFFFFFFFFF");
     assert_eq!(
         unwrap_token_value(it.next()),
-        TokenValue::UInt(2147483648u32)
+        TokenValue::Integer(Integer {
+            value: 18446744073709551615,
+            signed: true,
+            width: 32
+        })
     );
     expect_lexer_end(&mut it);
-
-    // Test 2^32 - 1 works in unsigned mode.
-    let mut it = Lexer::new("0xFFFFFFFFu");
-    assert_eq!(
-        unwrap_token_value(it.next()),
-        TokenValue::UInt(4294967295u32)
-    );
-    expect_lexer_end(&mut it);
-
-    // Test 2^32 unsigned overflows and is an error
-    let mut it = Lexer::new("0x100000000u");
-    assert_eq!(unwrap_error(it.next()), PreprocessorError::IntegerOverflow);
 }
 
 #[test]
 fn lex_octal() {
     // Test some basic cases
     let mut it = Lexer::new("01 00u 07654 01234u");
-    assert_eq!(unwrap_token_value(it.next()), TokenValue::Int(1));
-    assert_eq!(unwrap_token_value(it.next()), TokenValue::UInt(0));
-    assert_eq!(unwrap_token_value(it.next()), TokenValue::Int(4012));
-    assert_eq!(unwrap_token_value(it.next()), TokenValue::UInt(668));
+    assert_eq!(unwrap_token_value(it.next()), 1.into());
+    assert_eq!(unwrap_token_value(it.next()), 0u32.into());
+    assert_eq!(unwrap_token_value(it.next()), 4012.into());
+    assert_eq!(unwrap_token_value(it.next()), 668u32.into());
     expect_lexer_end(&mut it);
 
     // Test with redundant zeroes
     let mut it = Lexer::new("0000 0000000000000001");
-    assert_eq!(unwrap_token_value(it.next()), TokenValue::Int(0));
-    assert_eq!(unwrap_token_value(it.next()), TokenValue::Int(1));
+    assert_eq!(unwrap_token_value(it.next()), 0.into());
+    assert_eq!(unwrap_token_value(it.next()), 1.into());
     expect_lexer_end(&mut it);
 
     // Test splitting with identifiers
     let mut it = Lexer::new("031zb");
-    assert_eq!(unwrap_token_value(it.next()), TokenValue::Int(25));
+    assert_eq!(unwrap_token_value(it.next()), 25.into());
     assert_eq!(
         unwrap_token_value(it.next()),
         TokenValue::Ident("zb".to_string())
@@ -507,53 +533,39 @@ fn lex_octal() {
 
     // Test splitting with whitespace
     let mut it = Lexer::new("031/**/32");
-    assert_eq!(unwrap_token_value(it.next()), TokenValue::Int(25));
-    assert_eq!(unwrap_token_value(it.next()), TokenValue::Int(32));
+    assert_eq!(unwrap_token_value(it.next()), 25.into());
+    assert_eq!(unwrap_token_value(it.next()), 32.into());
     expect_lexer_end(&mut it);
 
     // Test splitting with 8 and 9
     let mut it = Lexer::new("039 038");
-    assert_eq!(unwrap_token_value(it.next()), TokenValue::Int(3));
-    assert_eq!(unwrap_token_value(it.next()), TokenValue::Int(9));
-    assert_eq!(unwrap_token_value(it.next()), TokenValue::Int(3));
-    assert_eq!(unwrap_token_value(it.next()), TokenValue::Int(8));
+    assert_eq!(unwrap_token_value(it.next()), 3.into());
+    assert_eq!(unwrap_token_value(it.next()), 9.into());
+    assert_eq!(unwrap_token_value(it.next()), 3.into());
+    assert_eq!(unwrap_token_value(it.next()), 8.into());
     expect_lexer_end(&mut it);
 
     // Test splitting with punctuation
     let mut it = Lexer::new("031+32");
-    assert_eq!(unwrap_token_value(it.next()), TokenValue::Int(25));
+    assert_eq!(unwrap_token_value(it.next()), 25.into());
     assert_eq!(unwrap_token_value(it.next()), Punct::Plus.into());
-    assert_eq!(unwrap_token_value(it.next()), TokenValue::Int(32));
+    assert_eq!(unwrap_token_value(it.next()), 32.into());
     expect_lexer_end(&mut it);
 
-    // Test 2^31 - 1 works in signed mode.
-    let mut it = Lexer::new("017777777777");
-    assert_eq!(unwrap_token_value(it.next()), TokenValue::Int(2147483647));
-    expect_lexer_end(&mut it);
-
-    // Test 2^31 signed overflows and is an error
-    let mut it = Lexer::new("020000000000");
+    // Test that 2^64 produces an overflow error but that 2^64-1 correctly parses (even if it might
+    // produce an error down the line).
+    let mut it = Lexer::new("02000000000000000000000");
     assert_eq!(unwrap_error(it.next()), PreprocessorError::IntegerOverflow);
-
-    // Test 2^31 works in unsigned mode
-    let mut it = Lexer::new("020000000000u");
+    let mut it = Lexer::new("01777777777777777777777");
     assert_eq!(
         unwrap_token_value(it.next()),
-        TokenValue::UInt(2147483648u32)
+        TokenValue::Integer(Integer {
+            value: 18446744073709551615,
+            signed: true,
+            width: 32
+        })
     );
     expect_lexer_end(&mut it);
-
-    // Test 2^32 - 1 works in unsigned mode.
-    let mut it = Lexer::new("037777777777u");
-    assert_eq!(
-        unwrap_token_value(it.next()),
-        TokenValue::UInt(4294967295u32)
-    );
-    expect_lexer_end(&mut it);
-
-    // Test 2^32 unsigned overflows and is an error
-    let mut it = Lexer::new("040000000000u");
-    assert_eq!(unwrap_error(it.next()), PreprocessorError::IntegerOverflow);
 }
 
 #[test]
@@ -584,7 +596,7 @@ fn lex_punctuation() {
     // Test a number stops processing the token
     let mut it = Lexer::new("!1");
     assert_eq!(unwrap_token_value(it.next()), Punct::Bang.into());
-    assert_eq!(unwrap_token_value(it.next()), TokenValue::Int(1));
+    assert_eq!(unwrap_token_value(it.next()), 1.into());
     expect_lexer_end(&mut it);
 
     // Test an identifier stops processing the token

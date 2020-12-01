@@ -46,13 +46,12 @@ impl<T> From<StepExit> for Step<T> {
 trait MELexer {
     fn step(&mut self) -> Step<Token>;
     fn get_define(&self, name: &str) -> Option<&Rc<Define>>;
-    fn apply_line_offset(&self, line: u32, location: Location) -> Step<i32>;
+    fn apply_line_offset(&self, line: u32, location: Location) -> Step<u32>;
 }
 
 fn make_unexpected_error(token: LexerToken) -> StepExit {
     let error = match token.value {
-        LexerTokenValue::UInt(i) => PreprocessorError::UnexpectedToken(TokenValue::UInt(i)),
-        LexerTokenValue::Int(i) => PreprocessorError::UnexpectedToken(TokenValue::Int(i)),
+        LexerTokenValue::Integer(i) => PreprocessorError::UnexpectedToken(TokenValue::Integer(i)),
         LexerTokenValue::Ident(s) => PreprocessorError::UnexpectedToken(TokenValue::Ident(s)),
         LexerTokenValue::Punct(p) => PreprocessorError::UnexpectedToken(TokenValue::Punct(p)),
         LexerTokenValue::NewLine => PreprocessorError::UnexpectedNewLine,
@@ -85,8 +84,7 @@ struct DirectiveProcessor<'a> {
 pub fn convert_lexer_token(token: LexerToken) -> Step<Token> {
     let location = token.location;
     let value = match token.value {
-        LexerTokenValue::UInt(i) => Ok(TokenValue::UInt(i)),
-        LexerTokenValue::Int(i) => Ok(TokenValue::Int(i)),
+        LexerTokenValue::Integer(i) => Ok(TokenValue::Integer(i)),
         LexerTokenValue::Ident(s) => Ok(TokenValue::Ident(s)),
         LexerTokenValue::Punct(p) => Ok(TokenValue::Punct(p)),
         LexerTokenValue::NewLine => Err(PreprocessorError::UnexpectedNewLine),
@@ -277,7 +275,7 @@ impl<'a> DirectiveProcessor<'a> {
         }
 
         let (name, name_location) = self.expect_lexer_ident(directive_location)?;
-        // TODO check predefined
+        // TODO check predefine
         // It is valid to undef a name that is not defined.
         self.defines.remove(&name);
 
@@ -309,17 +307,11 @@ impl<'a> DirectiveProcessor<'a> {
 
         // Validates that the line is between 0 and 2^31 as per the C standard.
         match token.value {
-            LexerTokenValue::Int(value) => {
-                if value < 0 {
+            LexerTokenValue::Integer(i) => {
+                if i.value >= (1u64 << 32u64) {
                     return Err(make_line_overflow_error(token.location));
                 }
-                self.line_offset = value as i64 - directive_location.line as i64;
-            }
-            LexerTokenValue::UInt(value) => {
-                if value >= (1u32 << 31u32) {
-                    return Err(make_line_overflow_error(token.location));
-                }
-                self.line_offset = value as i64 - directive_location.line as i64;
+                self.line_offset = i.value as i64 - directive_location.line as i64;
             }
             _ => return Err(make_unexpected_error(token)),
         };
@@ -330,8 +322,8 @@ impl<'a> DirectiveProcessor<'a> {
 
     fn parse_if_directive(&mut self, directive_location: Location) -> Step<()> {
         self.parse_if_like_directive(directive_location, |this, location| {
-            if let LexerTokenValue::Int(value) = this.expect_a_lexer_token(location)?.value {
-                Ok(value != 0)
+            if let LexerTokenValue::Integer(i) = this.expect_a_lexer_token(location)?.value {
+                Ok(i.value != 0)
             } else {
                 // TODO, so much to do here xD
                 todo!();
@@ -376,8 +368,8 @@ impl<'a> DirectiveProcessor<'a> {
             return self.consume_until_newline();
         }
 
-        if let LexerTokenValue::Int(value) = self.expect_a_lexer_token(directive_location)?.value {
-            if value != 0 {
+        if let LexerTokenValue::Integer(i) = self.expect_a_lexer_token(directive_location)?.value {
+            if i.value != 0 {
                 self.skipping = false;
                 self.blocks.last_mut().unwrap().had_valid_segment = true;
             }
@@ -596,8 +588,8 @@ impl<'a> MELexer for DirectiveProcessor<'a> {
         self.defines.get(name)
     }
 
-    fn apply_line_offset(&self, line: u32, location: Location) -> Step<i32> {
-        if let Ok(offset_line) = i32::try_from(line as i64 + self.line_offset) {
+    fn apply_line_offset(&self, line: u32, location: Location) -> Step<u32> {
+        if let Ok(offset_line) = u32::try_from(line as i64 + self.line_offset) {
             Ok(offset_line)
         } else {
             Err(make_line_overflow_error(location))
@@ -800,8 +792,8 @@ impl MacroProcessor {
                 }
             }
 
-            fn apply_line_offset(&self, line: u32, _: Location) -> Step<i32> {
-                Ok(line as i32)
+            fn apply_line_offset(&self, line: u32, _: Location) -> Step<u32> {
+                Ok(line)
             }
         }
 
@@ -894,7 +886,11 @@ impl MacroProcessor {
                 };
 
                 return Ok(Token {
-                    value: TokenValue::Int(lexer.apply_line_offset(line, token.location)?),
+                    value: TokenValue::Integer(Integer {
+                        value: lexer.apply_line_offset(line, token.location)? as u64,
+                        signed: false,
+                        width: 32,
+                    }),
                     location: token.location,
                 });
             }
