@@ -239,6 +239,7 @@ impl<'a> Lexer<'a> {
         self.had_comments
     }
 
+    #[allow(clippy::unnecessary_wraps)]
     fn parse_identifier(&mut self) -> Result<TokenValue, PreprocessorError> {
         let mut identifier = String::default();
 
@@ -258,6 +259,7 @@ impl<'a> Lexer<'a> {
         Ok(TokenValue::Ident(identifier))
     }
 
+    #[allow(clippy::unnecessary_wraps)]
     fn parse_integer_signedness_suffix(&mut self) -> Result<bool, PreprocessorError> {
         match self.inner.peek() {
             Some(('u', _)) | Some(('U', _)) => {
@@ -308,11 +310,11 @@ impl<'a> Lexer<'a> {
                         _ => false,
                     })?
                 }
-                Some(('0'..='7', _)) => self.parse_number_radix(8, |c| c >= '0' && c <= '7')?,
+                Some(('0'..='7', _)) => self.parse_number_radix(8, |c| ('0'..='7').contains(&c))?,
                 _ => 0u64,
             }
         } else {
-            self.parse_number_radix(10, |c| c >= '0' && c <= '9')?
+            self.parse_number_radix(10, |c| ('0'..='9').contains(&c))?
         };
 
         Ok(TokenValue::Integer(Integer {
