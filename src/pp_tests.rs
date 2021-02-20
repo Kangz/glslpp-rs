@@ -1165,3 +1165,125 @@ fn parse_pragma() {
         }
     };
 }
+
+#[test]
+fn add_define() {
+    // Test adding multiple defines at the start.
+    let mut pp = Preprocessor::new("A B");
+    pp.add_define("A", "bat").unwrap();
+    pp.add_define("B", "man").unwrap();
+
+    match pp.next() {
+        Some(Ok(Token {
+            value: TokenValue::Ident(ident),
+            ..
+        })) => {
+            assert_eq!(ident, "bat");
+        }
+        _ => {
+            unreachable!();
+        }
+    }
+    match pp.next() {
+        Some(Ok(Token {
+            value: TokenValue::Ident(ident),
+            ..
+        })) => {
+            assert_eq!(ident, "man");
+        }
+        _ => {
+            unreachable!();
+        }
+    }
+
+    // Test that a multiline define works.
+    let mut pp = Preprocessor::new("A");
+    pp.add_define("A", "bat\nman").unwrap();
+
+    match pp.next() {
+        Some(Ok(Token {
+            value: TokenValue::Ident(ident),
+            ..
+        })) => {
+            assert_eq!(ident, "bat");
+        }
+        _ => {
+            unreachable!();
+        }
+    }
+    match pp.next() {
+        Some(Ok(Token {
+            value: TokenValue::Ident(ident),
+            ..
+        })) => {
+            assert_eq!(ident, "man");
+        }
+        _ => {
+            unreachable!();
+        }
+    }
+
+    // Test adding defines in the middle without overwriting.
+    let mut pp = Preprocessor::new("A A");
+    match pp.next() {
+        Some(Ok(Token {
+            value: TokenValue::Ident(ident),
+            ..
+        })) => {
+            assert_eq!(ident, "A");
+        }
+        _ => {
+            unreachable!();
+        }
+    }
+
+    pp.add_define("A", "foo").unwrap();
+    match pp.next() {
+        Some(Ok(Token {
+            value: TokenValue::Ident(ident),
+            ..
+        })) => {
+            assert_eq!(ident, "foo");
+        }
+        _ => {
+            unreachable!();
+        }
+    }
+
+    // Test adding defines in the middle with overwriting.
+    let mut pp = Preprocessor::new(
+        "#define A bat
+         A A",
+    );
+    match pp.next() {
+        Some(Ok(Token {
+            value: TokenValue::Ident(ident),
+            ..
+        })) => {
+            assert_eq!(ident, "bat");
+        }
+        _ => {
+            unreachable!();
+        }
+    }
+
+    pp.add_define("A", "foo").unwrap();
+    match pp.next() {
+        Some(Ok(Token {
+            value: TokenValue::Ident(ident),
+            ..
+        })) => {
+            assert_eq!(ident, "foo");
+        }
+        _ => {
+            unreachable!();
+        }
+    }
+
+    // Test a parsing error.
+    let mut pp = Preprocessor::new("A");
+    assert_eq!(
+        pp.add_define("A", "@").unwrap_err().0,
+        PreprocessorError::UnexpectedCharacter
+    );
+}
