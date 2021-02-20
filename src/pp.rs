@@ -81,19 +81,29 @@ struct DirectiveProcessor<'a> {
     had_non_directive_token: bool,
 }
 
-pub fn convert_lexer_token(token: LexerToken) -> Step<Token> {
+pub fn convert_lexer_token(token: LexerToken) -> Result<Token, (PreprocessorError, Location)> {
     let location = token.location;
-    let value = match token.value {
-        LexerTokenValue::Integer(i) => Ok(TokenValue::Integer(i)),
-        LexerTokenValue::Ident(s) => Ok(TokenValue::Ident(s)),
-        LexerTokenValue::Punct(p) => Ok(TokenValue::Punct(p)),
-        LexerTokenValue::NewLine => Err(PreprocessorError::UnexpectedNewLine),
-        LexerTokenValue::Hash => Err(PreprocessorError::UnexpectedHash),
-    };
-    match value {
-        Ok(value) => Ok(Token { value, location }),
-        Err(err) => Err(StepExit::Error((err, location))),
+    match token.value {
+        LexerTokenValue::Integer(i) => Ok(Token {
+            value: TokenValue::Integer(i),
+            location,
+        }),
+        LexerTokenValue::Ident(s) => Ok(Token {
+            value: TokenValue::Ident(s),
+            location,
+        }),
+        LexerTokenValue::Punct(p) => Ok(Token {
+            value: TokenValue::Punct(p),
+            location,
+        }),
+
+        LexerTokenValue::NewLine => Err((PreprocessorError::UnexpectedNewLine, location)),
+        LexerTokenValue::Hash => Err((PreprocessorError::UnexpectedHash, location)),
     }
+}
+
+pub fn convert_lexer_token_to_step(token: LexerToken) -> Step<Token> {
+    convert_lexer_token(token).map_err(StepExit::Error)
 }
 
 fn legal_redefinition(a: &Define, b: &Define) -> bool {
@@ -177,7 +187,7 @@ impl<'a> DirectiveProcessor<'a> {
             if token.value == LexerTokenValue::NewLine {
                 return Ok(tokens);
             }
-            tokens.push(convert_lexer_token(token)?);
+            tokens.push(convert_lexer_token_to_step(token)?);
         }
     }
 
@@ -249,7 +259,7 @@ impl<'a> DirectiveProcessor<'a> {
             if token.value == LexerTokenValue::NewLine {
                 break;
             }
-            define.tokens.push(convert_lexer_token(token)?);
+            define.tokens.push(convert_lexer_token_to_step(token)?);
             token = self.get_lexer_token()?;
         }
 
@@ -267,6 +277,44 @@ impl<'a> DirectiveProcessor<'a> {
             self.defines.insert(define.name.clone(), Rc::new(define));
             Ok(())
         }
+    }
+
+    fn add_define(
+        &mut self,
+        name: &str,
+        content: &str,
+    ) -> Result<(), (PreprocessorError, Location)> {
+        let mut define = Define {
+            name: name.to_string(),
+            function_like: false,
+            params: Default::default(),
+            tokens: Default::default(),
+        };
+
+        // Convert the content to tokens and add it to the define.
+        let mut lexer = lexer::Lexer::new(content);
+        loop {
+            match lexer.next() {
+                Some(Ok(lexer_token)) => {
+                    // Skip over newlines (the lexer always adds a newline, which would cause an
+                    // error in convert_lexer_token).
+                    if lexer_token.value == LexerTokenValue::NewLine {
+                        continue;
+                    }
+
+                    define.tokens.push(convert_lexer_token(lexer_token)?);
+                }
+
+                Some(Err(err)) => return Err(err),
+                None => break,
+            }
+        }
+
+        // Note this overwrites existing defines, we might want to add an option to make this
+        // an error in the future.
+        self.defines.insert(define.name.clone(), Rc::new(define));
+
+        Ok(())
     }
 
     fn parse_undef_directive(&mut self, directive_location: Location) -> Step<()> {
@@ -564,7 +612,7 @@ impl<'a> MELexer for DirectiveProcessor<'a> {
                 _ => {
                     if !self.skipping {
                         self.had_non_directive_token = true;
-                        convert_lexer_token(lexer_token)
+                        convert_lexer_token_to_step(lexer_token)
                     } else {
                         Continue.into()
                     }
@@ -920,6 +968,14 @@ impl<'a> Preprocessor<'a> {
             directive_processor: DirectiveProcessor::new(input),
             macro_processor: Default::default(),
         }
+    }
+
+    pub fn add_define(
+        &mut self,
+        name: &str,
+        content: &str,
+    ) -> Result<(), (PreprocessorError, Location)> {
+        self.directive_processor.add_define(name, content)
     }
 
     fn step(&mut self) -> Step<Token> {
