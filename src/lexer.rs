@@ -1,4 +1,4 @@
-use crate::token::{Integer, Location, PreprocessorError, Punct};
+use crate::token::{Float, Integer, Location, PreprocessorError, Punct};
 use std::iter::Peekable;
 
 type CharAndLocation = (char, Location);
@@ -196,7 +196,7 @@ pub enum TokenValue {
     // Regular token values
     Ident(String),
     Integer(Integer),
-    //Float(f32), // TODO
+    Float(Float),
     Punct(Punct),
 }
 
@@ -259,14 +259,13 @@ impl<'a> Lexer<'a> {
         Ok(TokenValue::Ident(identifier))
     }
 
-    #[allow(clippy::unnecessary_wraps)]
-    fn parse_integer_signedness_suffix(&mut self) -> Result<bool, PreprocessorError> {
+    fn parse_integer_signedness_suffix(&mut self) -> bool {
         match self.inner.peek() {
             Some(('u', _)) | Some(('U', _)) => {
                 self.inner.next();
-                Ok(false)
+                false
             }
-            _ => Ok(true),
+            _ => true,
         }
     }
 
@@ -278,52 +277,110 @@ impl<'a> Lexer<'a> {
         }
     }
 
-    fn parse_number_radix(
-        &mut self,
-        radix: u32,
-        filter: impl Fn(char) -> bool,
-    ) -> Result<u64, PreprocessorError> {
-        let mut number = String::default();
+    fn parse_float_width_suffix(&mut self) -> Result<i32, PreprocessorError> {
+        match self.inner.peek() {
+            Some(('l', _)) | Some(('L', _)) => Err(PreprocessorError::NotSupported64BitLiteral),
+            Some(('h', _)) | Some(('H', _)) => Err(PreprocessorError::NotSupported16BitLiteral),
+            Some(('f', _)) | Some(('F', _)) => {
+                self.inner.next();
+                Ok(32)
+            }
+            _ => Ok(32),
+        }
+    }
+
+    fn consume_chars(&mut self, filter: impl Fn(char) -> bool) -> String {
+        let mut result: String = Default::default();
 
         while let Some(&(current, _)) = self.inner.peek() {
             if filter(current) {
                 self.inner.next();
-                number.push(current);
+                result.push(current);
             } else {
                 break;
             }
         }
 
-        u64::from_str_radix(&number, radix).map_err(|_err| PreprocessorError::IntegerOverflow)
+        result
     }
 
-    fn parse_number(&mut self) -> Result<TokenValue, PreprocessorError> {
-        // 0 is used as the first char for non-decimal numbers
-        let value = if let Some(('0', _)) = self.inner.peek() {
-            self.inner.next();
+    fn parse_number(&mut self, first_char: char) -> Result<TokenValue, PreprocessorError> {
+        let mut is_float = false;
+        let mut integer_radix = 10;
+        let mut raw: String = Default::default();
+        raw.push(first_char);
 
+        // Handle hexadecimal numbers that needs to consume a..f in addition to digits.
+        if first_char == '0' {
             match self.inner.peek() {
-                Some(('x', _)) => {
+                Some(('x', _)) | Some(('X', _)) => {
                     self.inner.next();
-                    self.parse_number_radix(16, |c| match c {
+
+                    raw += &self.consume_chars(|c| match c {
                         '0'..='9' | 'a'..='f' | 'A'..='F' => true,
                         _ => false,
-                    })?
+                    });
+                    integer_radix = 16;
                 }
-                Some(('0'..='7', _)) => self.parse_number_radix(8, |c| ('0'..='7').contains(&c))?,
-                _ => 0u64,
+
+                // Octal numbers can also be the prefix of floats, so we need to parse all digits
+                // and not just 0..7 in case it is a float like 00009.0f, the parsing of all digits
+                // is done below, but we still need to remember the radix.
+                Some(('0'..='9', _)) => {
+                    integer_radix = 8;
+                }
+                _ => {}
+            };
+        }
+
+        if first_char != '.' {
+            // Parse any digits at the end of integers, or for the non-fractional part of floats.
+            raw += &self.consume_chars(|c| ('0'..='9').contains(&c));
+
+            if let Some(('.', _)) = self.inner.peek() {
+                self.inner.next();
+                raw.push('.');
+                is_float = true;
             }
         } else {
-            self.parse_number_radix(10, |c| ('0'..='9').contains(&c))?
-        };
+            is_float = true;
+        }
 
-        Ok(TokenValue::Integer(Integer {
-            value,
-            signed: self.parse_integer_signedness_suffix()?,
-            width: self.parse_integer_width_suffix()?,
-        }))
+        // At the point either we're an integer missing only suffixes, or we're a float with everything
+        // up to the . consumed.
 
-        //TODO handle floats?
+        if is_float {
+            raw += &self.consume_chars(|c| ('0'..='9').contains(&c));
+            let width = self.parse_float_width_suffix()?;
+
+            // TODO: Depending on the GLSL version make it an error to not have the suffix.
+            // TODO: Handle scientific notation.
+
+            Ok(TokenValue::Float(Float {
+                value: raw
+                    .parse::<f32>()
+                    .map_err(|_| PreprocessorError::FloatParsingError)?,
+                width,
+            }))
+        } else {
+            let signed = self.parse_integer_signedness_suffix();
+            let width = self.parse_integer_width_suffix()?;
+
+            // Skip the initial 0 in hexa or octal (in hexa we never added the 'x').
+            dbg!(&raw);
+            if integer_radix != 10 {
+                raw = raw.split_off(1);
+            }
+
+            dbg!(integer_radix);
+            dbg!(&raw);
+            Ok(TokenValue::Integer(Integer {
+                value: u64::from_str_radix(&raw, integer_radix)
+                    .map_err(|_err| PreprocessorError::IntegerOverflow)?,
+                signed,
+                width,
+            }))
+        }
     }
 
     fn parse_punctuation(&mut self) -> Result<TokenValue, PreprocessorError> {
@@ -438,8 +495,21 @@ impl<'a> Iterator for Lexer<'a> {
                 }
 
                 'a'..='z' | 'A'..='Z' | '_' => self.parse_identifier(),
-                '0'..='9' => self.parse_number(),
-                // TODO handle .float
+                c @ '0'..='9' => {
+                    self.inner.next();
+                    self.parse_number(c)
+                }
+
+                // Special case . as a punctuation because it can be the start of a float.
+                '.' => {
+                    self.inner.next();
+
+                    match self.inner.peek() {
+                        Some(('0'..='9', _)) => self.parse_number('.'),
+                        _ => Ok(TokenValue::Punct(Punct::Dot)),
+                    }
+                }
+
                 _ => self.parse_punctuation(),
             };
 
