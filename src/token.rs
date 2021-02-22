@@ -64,6 +64,7 @@ pub enum Punct {
 // TODO location?
 pub enum PreprocessorError {
     IntegerOverflow,
+    FloatParsingError,
     UnexpectedCharacter,
     UnexpectedToken(TokenValue),
     UnexpectedHash,
@@ -94,6 +95,12 @@ pub struct Integer {
 }
 
 #[derive(Clone, PartialEq, Debug)]
+pub struct Float {
+    pub value: f32,
+    pub width: i32,
+}
+
+#[derive(Clone, PartialEq, Debug)]
 pub struct Version {
     pub tokens: Vec<Token>,
     pub is_first_directive: bool,
@@ -116,7 +123,7 @@ pub enum TokenValue {
     Ident(String),
 
     Integer(Integer),
-    //Float(f32), // TODO
+    Float(Float),
     Punct(Punct),
 
     Version(Version),

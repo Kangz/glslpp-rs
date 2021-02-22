@@ -52,6 +52,7 @@ trait MELexer {
 fn make_unexpected_error(token: LexerToken) -> StepExit {
     let error = match token.value {
         LexerTokenValue::Integer(i) => PreprocessorError::UnexpectedToken(TokenValue::Integer(i)),
+        LexerTokenValue::Float(f) => PreprocessorError::UnexpectedToken(TokenValue::Float(f)),
         LexerTokenValue::Ident(s) => PreprocessorError::UnexpectedToken(TokenValue::Ident(s)),
         LexerTokenValue::Punct(p) => PreprocessorError::UnexpectedToken(TokenValue::Punct(p)),
         LexerTokenValue::NewLine => PreprocessorError::UnexpectedNewLine,
@@ -86,6 +87,10 @@ pub fn convert_lexer_token(token: LexerToken) -> Result<Token, (PreprocessorErro
     match token.value {
         LexerTokenValue::Integer(i) => Ok(Token {
             value: TokenValue::Integer(i),
+            location,
+        }),
+        LexerTokenValue::Float(f) => Ok(Token {
+            value: TokenValue::Float(f),
             location,
         }),
         LexerTokenValue::Ident(s) => Ok(Token {
