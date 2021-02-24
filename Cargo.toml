@@ -1,9 +1,11 @@
 [package]
 name = "pp-rs"
 version = "0.1.0"
-authors = ["Corentin Wallez"]
-edition = "2018"
-
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+authors = ["pp-rs Developers"]
+description = "Shader preprocessor"
+homepage = "https://github.com/Kangz/glslpp-rs"
+repository = "https://github.com/Kangz/glslpp-rs"
+keywords = ["shader", "preprocessor", "glsl"]
+license = "BSD-3-Clause"
 
 [dependencies]

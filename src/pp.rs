@@ -34,8 +34,8 @@ pub enum StepExit {
     Finished,
 }
 
-use StepExit::Continue;
-use StepExit::Finished;
+use self::StepExit::Continue;
+use self::StepExit::Finished;
 
 impl<T> From<StepExit> for Step<T> {
     fn from(exit: StepExit) -> Step<T> {
