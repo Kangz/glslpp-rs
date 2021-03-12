@@ -367,13 +367,10 @@ impl<'a> Lexer<'a> {
             let width = self.parse_integer_width_suffix()?;
 
             // Skip the initial 0 in hexa or octal (in hexa we never added the 'x').
-            dbg!(&raw);
             if integer_radix != 10 {
                 raw = raw.split_off(1);
             }
 
-            dbg!(integer_radix);
-            dbg!(&raw);
             Ok(TokenValue::Integer(Integer {
                 value: u64::from_str_radix(&raw, integer_radix)
                     .map_err(|_err| PreprocessorError::IntegerOverflow)?,
