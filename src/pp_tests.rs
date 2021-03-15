@@ -502,6 +502,28 @@ fn parse_if() {
         "",
     );
 
+    // Check a couple simple expressions
+    check_preprocessed_result(
+        "#define FOO
+         #if defined(FOO)
+         A
+         #endif",
+        "A",
+    );
+    check_preprocessed_result(
+        "#if defined FOO
+         A
+         #endif",
+        "",
+    );
+    check_preprocessed_result(
+        "#define FOO 0
+         #if FOO
+         A
+         #endif",
+        "",
+    );
+
     // TODO test expressions?
 }
 

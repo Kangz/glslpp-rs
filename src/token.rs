@@ -85,6 +85,7 @@ pub enum PreprocessorError {
     LineOverflow,
     NotSupported16BitLiteral,
     NotSupported64BitLiteral,
+    MacroNotDefined,
 }
 
 #[derive(Clone, PartialEq, Debug)]

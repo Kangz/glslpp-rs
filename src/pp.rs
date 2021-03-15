@@ -1,11 +1,6 @@
 use crate::lexer::{self, Token as LexerToken, TokenValue as LexerTokenValue};
 use crate::token::*;
-use std::{
-    cmp::Ordering,
-    collections::{HashMap, HashSet},
-    convert::TryFrom,
-    rc::Rc,
-};
+use std::{cmp::Ordering, collections::{HashMap, HashSet}, convert::TryFrom, rc::Rc};
 
 #[derive(Clone, PartialEq, Debug)]
 struct Define {
@@ -373,14 +368,41 @@ impl<'a> DirectiveProcessor<'a> {
         Ok(())
     }
 
-    fn parse_if_directive(&mut self, directive_location: Location) -> Step<()> {
-        self.parse_if_like_directive(directive_location, |this, location| {
-            if let LexerTokenValue::Integer(i) = this.expect_a_lexer_token(location)?.value {
+    fn evaluate_if_expression(&mut self, location: Location, line: Vec<Token>) -> Step<bool> {
+        let line: Vec<_> = line.into_iter().map(|t| t.value).collect();
+
+        match *line {
+            [TokenValue::Integer(ref i)] => {
+                // Evaluate "#if 123"
                 Ok(i.value != 0)
-            } else {
+            }
+            [TokenValue::Ident(ref ident), TokenValue::Punct(Punct::LeftParen), 
+                TokenValue::Ident(ref ident2), TokenValue::Punct(Punct::RightParen)] |
+            [TokenValue::Ident(ref ident), TokenValue::Ident(ref ident2)] if ident == "defined" => {
+                // Evaluate "#if defined XYZ" and "#if defined(XYZ)"
+                Ok(self.defines.contains_key(ident2))
+            }
+            [TokenValue::Ident(ref ident)] => {
+                // Handle "#if XYZ"
+                match self.defines.get(ident) {
+                    Some(d) => {
+                        let line = d.tokens.clone();
+                        self.evaluate_if_expression(location, line)
+                    }
+                    None => Err(StepExit::Error((PreprocessorError::MacroNotDefined, location))),
+                }
+            }
+            _ => {
                 // TODO, so much to do here xD
                 todo!();
             }
+        }
+    }
+
+    fn parse_if_directive(&mut self, directive_location: Location) -> Step<()> {
+        self.parse_if_like_directive(directive_location, |this, location| {
+            let line = this.gather_until_newline()?;
+            this.evaluate_if_expression(location, line)
         })
     }
 
@@ -421,14 +443,10 @@ impl<'a> DirectiveProcessor<'a> {
             return self.consume_until_newline();
         }
 
-        if let LexerTokenValue::Integer(i) = self.expect_a_lexer_token(directive_location)?.value {
-            if i.value != 0 {
-                self.skipping = false;
-                self.blocks.last_mut().unwrap().had_valid_segment = true;
-            }
-        } else {
-            // TODO, so much to do here xD
-            todo!();
+        let line = self.gather_until_newline()?;
+        if self.evaluate_if_expression(directive_location, line)? {
+            self.skipping = false;
+            self.blocks.last_mut().unwrap().had_valid_segment = true;
         }
 
         Ok(())
