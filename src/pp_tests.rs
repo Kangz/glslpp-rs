@@ -679,7 +679,7 @@ fn parse_elif() {
 
     // Check that the condition isn't processed if a previous segment was used.
     check_preprocessed_result(
-        "#if 1
+        "#if !defined(FOO)
          #elif # !
          #endif
 
