@@ -382,6 +382,12 @@ impl<'a> DirectiveProcessor<'a> {
                 // Evaluate "#if defined XYZ" and "#if defined(XYZ)"
                 Ok(self.defines.contains_key(ident2))
             }
+            [TokenValue::Punct(Punct::Bang), TokenValue::Ident(ref ident), TokenValue::Punct(Punct::LeftParen), 
+                TokenValue::Ident(ref ident2), TokenValue::Punct(Punct::RightParen)] |
+            [TokenValue::Punct(Punct::Bang), TokenValue::Ident(ref ident), TokenValue::Ident(ref ident2)] if ident == "defined" => {
+                // Evaluate "#if !defined XYZ" and "#if !defined(XYZ)"
+                Ok(!self.defines.contains_key(ident2))
+            }
             [TokenValue::Ident(ref ident)] => {
                 // Handle "#if XYZ"
                 match self.defines.get(ident) {
