@@ -368,7 +368,7 @@ impl<'a> DirectiveProcessor<'a> {
         Ok(())
     }
 
-    fn evaluate_if_expression(&mut self, location: Location, line: Vec<Token>) -> Step<bool> {
+    fn evaluate_if_expression(&mut self, location: Location, line: Vec<Token>, max_recursion_depth: usize) -> Step<bool> {
         let line: Vec<_> = line.into_iter().map(|t| t.value).collect();
 
         match *line {
@@ -390,10 +390,14 @@ impl<'a> DirectiveProcessor<'a> {
             }
             [TokenValue::Ident(ref ident)] => {
                 // Handle "#if XYZ"
+                if max_recursion_depth == 0 {
+                    return Err(StepExit::Error((PreprocessorError::RecursionLimitReached, location)));
+                }
                 match self.defines.get(ident) {
                     Some(d) => {
+                        assert_eq!(d.tokens.len(), 1); // TODO
                         let line = d.tokens.clone();
-                        self.evaluate_if_expression(location, line)
+                        self.evaluate_if_expression(location, line, max_recursion_depth - 1)
                     }
                     None => Err(StepExit::Error((PreprocessorError::MacroNotDefined, location))),
                 }
@@ -408,7 +412,7 @@ impl<'a> DirectiveProcessor<'a> {
     fn parse_if_directive(&mut self, directive_location: Location) -> Step<()> {
         self.parse_if_like_directive(directive_location, |this, location| {
             let line = this.gather_until_newline()?;
-            this.evaluate_if_expression(location, line)
+            this.evaluate_if_expression(location, line, 64)
         })
     }
 
@@ -450,7 +454,7 @@ impl<'a> DirectiveProcessor<'a> {
         }
 
         let line = self.gather_until_newline()?;
-        if self.evaluate_if_expression(directive_location, line)? {
+        if self.evaluate_if_expression(directive_location, line, 64)? {
             self.skipping = false;
             self.blocks.last_mut().unwrap().had_valid_segment = true;
         }

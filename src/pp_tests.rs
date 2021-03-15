@@ -524,6 +524,13 @@ fn parse_if() {
         "",
     );
 
+    check_preprocessing_error(
+        "#define FOO FOO
+         #if FOO
+         #endif",
+         PreprocessorError::RecursionLimitReached,
+    );
+
     // TODO test expressions?
 }
 
