@@ -86,6 +86,7 @@ pub enum PreprocessorError {
     NotSupported16BitLiteral,
     NotSupported64BitLiteral,
     MacroNotDefined,
+    RecursionLimitReached,
 }
 
 #[derive(Clone, PartialEq, Debug)]
