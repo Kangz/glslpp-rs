@@ -164,35 +164,28 @@ impl<'macros> IfParser<'macros> {
 
                 Ok(self.defines.get(name).is_some() as i64)
             }
-            TokenValue::Punct(punct) => {
-                if let Punct::LeftParen = punct {
-                    self.expect_next()?;
+            TokenValue::Punct(Punct::LeftParen) => {
+                self.expect_next()?;
 
-                    let name_token = self.expect_raw_next()?;
-                    let name = match name_token.value {
-                        TokenValue::Ident(name) => Ok(name),
-                        value => Err(StepExit::Error((
-                            PreprocessorError::UnexpectedToken(value),
-                            name_token.location,
-                        ))),
-                    }?;
+                let name_token = self.expect_raw_next()?;
+                let name = match name_token.value {
+                    TokenValue::Ident(name) => Ok(name),
+                    value => Err(StepExit::Error((
+                        PreprocessorError::UnexpectedToken(value),
+                        name_token.location,
+                    ))),
+                }?;
 
-                    let close_brace = self.expect_next()?;
+                let close_brace = self.expect_next()?;
 
-                    match close_brace.value {
-                        TokenValue::Punct(Punct::RightParen) => {
-                            Ok(self.defines.get(&name).is_some() as i64)
-                        }
-                        value => Err(StepExit::Error((
-                            PreprocessorError::UnexpectedToken(value),
-                            close_brace.location,
-                        ))),
+                match close_brace.value {
+                    TokenValue::Punct(Punct::RightParen) => {
+                        Ok(self.defines.get(&name).is_some() as i64)
                     }
-                } else {
-                    Err(StepExit::Error((
-                        PreprocessorError::UnexpectedToken(next.value),
-                        next.location,
-                    )))
+                    value => Err(StepExit::Error((
+                        PreprocessorError::UnexpectedToken(value),
+                        close_brace.location,
+                    ))),
                 }
             }
             value => Err(StepExit::Error((
@@ -212,6 +205,19 @@ impl<'macros> IfParser<'macros> {
                 self.handle_defined()
             }
             TokenValue::Integer(int) => Ok(int.value as i64),
+            TokenValue::Punct(Punct::LeftParen) => {
+                let val = self.parse_logical_or()?;
+
+                let close_brace = self.expect_next()?;
+
+                match close_brace.value {
+                    TokenValue::Punct(Punct::RightParen) => Ok(val),
+                    value => Err(StepExit::Error((
+                        PreprocessorError::UnexpectedToken(value),
+                        close_brace.location,
+                    ))),
+                }
+            }
             value => Err(StepExit::Error((
                 PreprocessorError::UnexpectedToken(value),
                 token.location,
