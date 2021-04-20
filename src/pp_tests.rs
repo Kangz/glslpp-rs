@@ -32,6 +32,7 @@ impl<'a> Iterator for NoopPreprocessor<'a> {
     }
 }
 
+#[track_caller]
 fn check_preprocessed_result(input: &str, expected: &str) {
     let pp_items: Vec<PreprocessorItem> = Preprocessor::new(input).collect();
     let noop_items: Vec<PreprocessorItem> = NoopPreprocessor::new(expected).collect();
@@ -528,7 +529,7 @@ fn parse_if() {
         "#define FOO FOO
          #if FOO
          #endif",
-         PreprocessorError::RecursionLimitReached,
+        PreprocessorError::RecursionLimitReached,
     );
 
     // TODO test expressions?

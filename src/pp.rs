@@ -1,6 +1,13 @@
 use crate::lexer::{self, Token as LexerToken, TokenValue as LexerTokenValue};
 use crate::token::*;
-use std::{cmp::Ordering, collections::{HashMap, HashSet}, convert::TryFrom, rc::Rc};
+use std::{
+    cmp::Ordering,
+    collections::{HashMap, HashSet},
+    convert::TryFrom,
+    rc::Rc,
+};
+
+mod if_parser;
 
 #[derive(Clone, PartialEq, Debug)]
 struct Define {
@@ -368,45 +375,13 @@ impl<'a> DirectiveProcessor<'a> {
         Ok(())
     }
 
-    fn evaluate_if_expression(&mut self, location: Location, line: Vec<Token>, max_recursion_depth: usize) -> Step<bool> {
-        let line: Vec<_> = line.into_iter().map(|t| t.value).collect();
-
-        match *line {
-            [TokenValue::Integer(ref i)] => {
-                // Evaluate "#if 123"
-                Ok(i.value != 0)
-            }
-            [TokenValue::Ident(ref ident), TokenValue::Punct(Punct::LeftParen), 
-                TokenValue::Ident(ref ident2), TokenValue::Punct(Punct::RightParen)] |
-            [TokenValue::Ident(ref ident), TokenValue::Ident(ref ident2)] if ident == "defined" => {
-                // Evaluate "#if defined XYZ" and "#if defined(XYZ)"
-                Ok(self.defines.contains_key(ident2))
-            }
-            [TokenValue::Punct(Punct::Bang), TokenValue::Ident(ref ident), TokenValue::Punct(Punct::LeftParen), 
-                TokenValue::Ident(ref ident2), TokenValue::Punct(Punct::RightParen)] |
-            [TokenValue::Punct(Punct::Bang), TokenValue::Ident(ref ident), TokenValue::Ident(ref ident2)] if ident == "defined" => {
-                // Evaluate "#if !defined XYZ" and "#if !defined(XYZ)"
-                Ok(!self.defines.contains_key(ident2))
-            }
-            [TokenValue::Ident(ref ident)] => {
-                // Handle "#if XYZ"
-                if max_recursion_depth == 0 {
-                    return Err(StepExit::Error((PreprocessorError::RecursionLimitReached, location)));
-                }
-                match self.defines.get(ident) {
-                    Some(d) => {
-                        assert_eq!(d.tokens.len(), 1); // TODO
-                        let line = d.tokens.clone();
-                        self.evaluate_if_expression(location, line, max_recursion_depth - 1)
-                    }
-                    None => Err(StepExit::Error((PreprocessorError::MacroNotDefined, location))),
-                }
-            }
-            _ => {
-                // TODO, so much to do here xD
-                todo!();
-            }
-        }
+    fn evaluate_if_expression(
+        &mut self,
+        location: Location,
+        line: Vec<Token>,
+        max_recursion_depth: usize,
+    ) -> Step<bool> {
+        if_parser::IfParser::new(line, max_recursion_depth, &self.defines, location).evaluate()
     }
 
     fn parse_if_directive(&mut self, directive_location: Location) -> Step<()> {
