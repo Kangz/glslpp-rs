@@ -375,19 +375,24 @@ impl<'a> DirectiveProcessor<'a> {
         Ok(())
     }
 
-    fn evaluate_if_expression(
-        &mut self,
-        location: Location,
-        line: Vec<Token>,
-        max_recursion_depth: usize,
-    ) -> Step<bool> {
-        if_parser::IfParser::new(line, max_recursion_depth, &self.defines, location).evaluate()
+    fn evaluate_if_expression(&mut self, location: Location, line: Vec<Token>) -> Step<bool> {
+        let mut parser = if_parser::IfParser::new(line, &self.defines, location, true);
+        let res = parser.evaluate_expression()?;
+
+        if let Some(token) = parser.raw_peek() {
+            Err(StepExit::Error((
+                PreprocessorError::UnexpectedToken(token.value),
+                token.location,
+            )))
+        } else {
+            Ok(res != 0)
+        }
     }
 
     fn parse_if_directive(&mut self, directive_location: Location) -> Step<()> {
         self.parse_if_like_directive(directive_location, |this, location| {
             let line = this.gather_until_newline()?;
-            this.evaluate_if_expression(location, line, 64)
+            this.evaluate_if_expression(location, line)
         })
     }
 
@@ -429,7 +434,7 @@ impl<'a> DirectiveProcessor<'a> {
         }
 
         let line = self.gather_until_newline()?;
-        if self.evaluate_if_expression(directive_location, line, 64)? {
+        if self.evaluate_if_expression(directive_location, line)? {
             self.skipping = false;
             self.blocks.last_mut().unwrap().had_valid_segment = true;
         }

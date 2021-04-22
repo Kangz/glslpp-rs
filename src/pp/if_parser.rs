@@ -1,64 +1,60 @@
 use crate::token::{Integer, PreprocessorError, Punct};
 
-use super::{Define, Location, Step, StepExit, Token, TokenValue};
-use std::{collections::HashMap, iter::Peekable, rc::Rc, slice::Iter, vec::IntoIter};
+use super::{Define, Location, MELexer, MacroProcessor, Step, StepExit, Token, TokenValue};
+use std::{collections::HashMap, rc::Rc, vec::IntoIter};
+
+struct IfLexer<'macros> {
+    tokens: IntoIter<Token>,
+    defines: &'macros HashMap<String, Rc<Define>>,
+}
 
 pub(super) struct IfParser<'macros> {
-    tokens: Peekable<IntoIter<Token>>,
-    defines: &'macros HashMap<String, Rc<Define>>,
-    macro_expansion: Vec<Peekable<Iter<'macros, Token>>>,
-    max_recursion_depth: usize,
+    lexer: IfLexer<'macros>,
+    macro_processor: MacroProcessor,
     location: Location,
+
+    parsing_if: bool,
+    carry: Option<Token>,
 }
 
 impl<'macros> IfParser<'macros> {
+    /// Builds a new IfParser that can be reused
+    ///
+    /// `parsing_if` indicates wether or not non defined macros should be
+    /// replaced with 0
     pub fn new(
         tokens: Vec<Token>,
-        max_recursion_depth: usize,
         defines: &'macros HashMap<String, Rc<Define>>,
         location: Location,
+        parsing_if: bool,
     ) -> Self {
         IfParser {
-            tokens: tokens.into_iter().peekable(),
-            defines,
-            macro_expansion: Vec::with_capacity(max_recursion_depth),
-            max_recursion_depth,
+            lexer: IfLexer {
+                tokens: tokens.into_iter(),
+                defines,
+            },
+            macro_processor: MacroProcessor::default(),
             location,
+
+            parsing_if,
+            carry: None,
         }
     }
 
     fn raw_next(&mut self) -> Option<Token> {
-        let token = loop {
-            if let Some(define) = self.macro_expansion.last_mut() {
-                if let Some(token) = define.next() {
-                    break Some(token.clone());
-                }
-
-                self.macro_expansion.pop();
-                continue;
-            }
-
-            break None;
-        };
-
-        token.or_else(|| self.tokens.next())
+        self.carry
+            .take()
+            .or_else(|| self.macro_processor.step(&mut self.lexer).ok())
     }
 
-    fn raw_peek(&mut self) -> Option<Token> {
-        let token = loop {
-            if let Some(define) = self.macro_expansion.last_mut() {
-                if let Some(token) = define.peek() {
-                    break Some((*token).clone());
-                }
+    pub fn raw_peek(&mut self) -> Option<Token> {
+        self.carry.clone().or_else(|| {
+            let token = self.macro_processor.step(&mut self.lexer).ok();
 
-                self.macro_expansion.pop();
-                continue;
-            }
+            self.carry = token.clone();
 
-            break None;
-        };
-
-        token.or_else(|| self.tokens.peek().cloned())
+            token
+        })
     }
 
     fn next(&mut self) -> Step<Option<Token>> {
@@ -89,7 +85,10 @@ impl<'macros> IfParser<'macros> {
                 self.raw_next();
 
                 match self.add_define(name, token.location)? {
-                    Some(t) => Some(t),
+                    Some(t) => {
+                        self.carry = Some(t);
+                        self.carry.clone()
+                    }
                     None => self.peek()?,
                 }
             }
@@ -99,14 +98,6 @@ impl<'macros> IfParser<'macros> {
 
     fn expect_raw_next(&mut self) -> Step<Token> {
         let val = self.raw_next();
-        val.ok_or(StepExit::Error((
-            PreprocessorError::UnexpectedEndOfInput,
-            self.location,
-        )))
-    }
-
-    fn expect_raw_peek(&mut self) -> Step<Token> {
-        let val = self.raw_peek();
         val.ok_or(StepExit::Error((
             PreprocessorError::UnexpectedEndOfInput,
             self.location,
@@ -130,43 +121,34 @@ impl<'macros> IfParser<'macros> {
     }
 
     fn add_define(&mut self, name: &str, location: Location) -> Step<Option<Token>> {
-        Ok(if let Some(define) = self.defines.get(name) {
-            if self.macro_expansion.len() == self.max_recursion_depth {
-                return Err(StepExit::Error((
-                    PreprocessorError::RecursionLimitReached,
-                    location,
-                )));
-            }
-
-            assert!(!define.function_like, "TODO: Handle function like defines");
-
-            self.macro_expansion.push(define.tokens.iter().peekable());
-
-            None
-        } else {
-            Some(Token {
+        if self
+            .macro_processor
+            .start_define_invocation(name, location, &mut self.lexer)?
+        {
+            Ok(None)
+        } else if self.parsing_if {
+            Ok(Some(Token {
                 value: TokenValue::Integer(Integer {
                     value: 0,
                     signed: true,
                     width: 64,
                 }),
                 location,
-            })
-        })
+            }))
+        } else {
+            Err(StepExit::Error((
+                PreprocessorError::UnexpectedToken(TokenValue::Ident(name.to_string())),
+                location,
+            )))
+        }
     }
 
     fn handle_defined(&mut self) -> Step<i64> {
-        let next = self.expect_raw_peek()?;
+        let next = self.expect_raw_next()?;
 
         match next.value {
-            TokenValue::Ident(ref name) => {
-                self.expect_raw_next()?;
-
-                Ok(self.defines.get(name).is_some() as i64)
-            }
+            TokenValue::Ident(ref name) => Ok(self.lexer.defines.get(name).is_some() as i64),
             TokenValue::Punct(Punct::LeftParen) => {
-                self.expect_next()?;
-
                 let name_token = self.expect_raw_next()?;
                 let name = match name_token.value {
                     TokenValue::Ident(name) => Ok(name),
@@ -180,7 +162,7 @@ impl<'macros> IfParser<'macros> {
 
                 match close_brace.value {
                     TokenValue::Punct(Punct::RightParen) => {
-                        Ok(self.defines.get(&name).is_some() as i64)
+                        Ok(self.lexer.defines.get(&name).is_some() as i64)
                     }
                     value => Err(StepExit::Error((
                         PreprocessorError::UnexpectedToken(value),
@@ -432,16 +414,21 @@ impl<'macros> IfParser<'macros> {
         Ok(left)
     }
 
-    pub fn evaluate(&mut self) -> Step<bool> {
-        let root = self.parse_logical_or()?;
+    pub fn evaluate_expression(&mut self) -> Step<i64> {
+        self.parse_logical_or()
+    }
+}
 
-        if let Some(token) = self.next()? {
-            Err(StepExit::Error((
-                PreprocessorError::UnexpectedToken(token.value),
-                token.location,
-            )))
-        } else {
-            Ok(root != 0)
-        }
+impl<'macros> MELexer for IfLexer<'macros> {
+    fn step(&mut self) -> Step<Token> {
+        self.tokens.next().ok_or(StepExit::Finished)
+    }
+
+    fn get_define(&self, name: &str) -> Option<&Rc<Define>> {
+        self.defines.get(name)
+    }
+
+    fn apply_line_offset(&self, line: u32, _: Location) -> Step<u32> {
+        Ok(line)
     }
 }

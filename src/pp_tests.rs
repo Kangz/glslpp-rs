@@ -47,6 +47,7 @@ fn check_preprocessed_result(input: &str, expected: &str) {
     }
 }
 
+#[track_caller]
 fn check_preprocessing_error(input: &str, expected_err: PreprocessorError) {
     for item in Preprocessor::new(input) {
         if let Err((err, _)) = item {
@@ -525,11 +526,11 @@ fn parse_if() {
         "",
     );
 
-    check_preprocessing_error(
+    check_preprocessed_result(
         "#define FOO FOO
          #if FOO
          #endif",
-        PreprocessorError::RecursionLimitReached,
+        "",
     );
 
     // TODO test expressions?
