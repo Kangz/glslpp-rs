@@ -533,6 +533,36 @@ fn parse_if() {
         "",
     );
 
+    check_preprocessed_result(
+        "#define FOO 1
+         #define BAR 1
+         #if (FOO & BAR) == 1
+         2
+         #endif",
+        "2",
+    );
+
+    check_preprocessed_result(
+        "#if 1 + -2 * 3 == -5
+         2
+         #endif",
+        "2",
+    );
+
+    check_preprocessed_result(
+        "#if 4 % 3 == 1
+         2
+         #endif",
+        "2",
+    );
+
+    check_preprocessed_result(
+        "#if 4 / 3 == 1
+         2
+         #endif",
+        "2",
+    );
+
     // TODO test expressions?
 }
 
