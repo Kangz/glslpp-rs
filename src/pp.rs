@@ -379,7 +379,7 @@ impl<'a> DirectiveProcessor<'a> {
         let mut parser = if_parser::IfParser::new(line, &self.defines, location, true);
         let res = parser.evaluate_expression()?;
 
-        if let Some(token) = parser.raw_peek() {
+        if let Some(token) = parser.peek()? {
             Err(StepExit::Error((
                 PreprocessorError::UnexpectedToken(token.value),
                 token.location,

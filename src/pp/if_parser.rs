@@ -1,10 +1,10 @@
 use crate::token::{Integer, PreprocessorError, Punct};
 
 use super::{Define, Location, MELexer, MacroProcessor, Step, StepExit, Token, TokenValue};
-use std::{collections::HashMap, rc::Rc, vec::IntoIter};
+use std::{collections::HashMap, rc::Rc, vec};
 
 struct IfLexer<'macros> {
-    tokens: IntoIter<Token>,
+    tokens: vec::IntoIter<Token>,
     defines: &'macros HashMap<String, Rc<Define>>,
 }
 
@@ -41,22 +41,14 @@ impl<'macros> IfParser<'macros> {
         }
     }
 
+    /// Helper method to consume the next token without define expansion
     fn raw_next(&mut self) -> Option<Token> {
         self.carry
             .take()
             .or_else(|| self.macro_processor.step(&mut self.lexer).ok())
     }
 
-    pub fn raw_peek(&mut self) -> Option<Token> {
-        self.carry.clone().or_else(|| {
-            let token = self.macro_processor.step(&mut self.lexer).ok();
-
-            self.carry = token.clone();
-
-            token
-        })
-    }
-
+    /// Helper method to consume the next token with define expansion
     fn next(&mut self) -> Step<Option<Token>> {
         let token = match self.raw_next() {
             Some(t) => t,
@@ -74,47 +66,37 @@ impl<'macros> IfParser<'macros> {
         })
     }
 
-    fn peek(&mut self) -> Step<Option<Token>> {
-        let token = match self.raw_peek() {
-            Some(t) => t,
-            None => return Ok(None),
-        };
-
-        Ok(match token.value {
-            TokenValue::Ident(ref name) if name != "defined" => {
-                self.raw_next();
-
-                match self.add_define(name, token.location)? {
-                    Some(t) => {
-                        self.carry = Some(t);
-                        self.carry.clone()
-                    }
-                    None => self.peek()?,
-                }
-            }
-            _ => Some(token),
-        })
+    /// Helper method to get the next token with define expansion
+    pub fn peek(&mut self) -> Step<Option<Token>> {
+        self.carry = self.next()?;
+        Ok(self.carry.clone())
     }
 
+    /// Helper method to consume the next token without define expansion
+    ///
+    /// Returns an EOI error if there are no further tokens
     fn expect_raw_next(&mut self) -> Step<Token> {
-        let val = self.raw_next();
-        val.ok_or(StepExit::Error((
+        self.raw_next().ok_or(StepExit::Error((
             PreprocessorError::UnexpectedEndOfInput,
             self.location,
         )))
     }
 
+    /// Helper method to consume the next token with define expansion
+    ///
+    /// Returns an EOI error if there are no further tokens
     fn expect_next(&mut self) -> Step<Token> {
-        let val = self.next()?;
-        val.ok_or(StepExit::Error((
+        self.next()?.ok_or(StepExit::Error((
             PreprocessorError::UnexpectedEndOfInput,
             self.location,
         )))
     }
 
+    /// Helper method to get the next token with define expansion
+    ///
+    /// Returns an EOI error if there are no further tokens
     fn expect_peek(&mut self) -> Step<Token> {
-        let val = self.peek()?;
-        val.ok_or(StepExit::Error((
+        self.peek()?.ok_or(StepExit::Error((
             PreprocessorError::UnexpectedEndOfInput,
             self.location,
         )))
