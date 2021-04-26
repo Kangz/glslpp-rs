@@ -32,6 +32,7 @@ impl<'a> Iterator for NoopPreprocessor<'a> {
     }
 }
 
+#[track_caller]
 fn check_preprocessed_result(input: &str, expected: &str) {
     let pp_items: Vec<PreprocessorItem> = Preprocessor::new(input).collect();
     let noop_items: Vec<PreprocessorItem> = NoopPreprocessor::new(expected).collect();
@@ -46,6 +47,7 @@ fn check_preprocessed_result(input: &str, expected: &str) {
     }
 }
 
+#[track_caller]
 fn check_preprocessing_error(input: &str, expected_err: PreprocessorError) {
     for item in Preprocessor::new(input) {
         if let Err((err, _)) = item {
@@ -524,11 +526,41 @@ fn parse_if() {
         "",
     );
 
-    check_preprocessing_error(
+    check_preprocessed_result(
         "#define FOO FOO
          #if FOO
          #endif",
-         PreprocessorError::RecursionLimitReached,
+        "",
+    );
+
+    check_preprocessed_result(
+        "#define FOO 1
+         #define BAR 1
+         #if (FOO & BAR) == 1
+         2
+         #endif",
+        "2",
+    );
+
+    check_preprocessed_result(
+        "#if 1 + -2 * 3 == -5
+         2
+         #endif",
+        "2",
+    );
+
+    check_preprocessed_result(
+        "#if 4 % 3 == 1
+         2
+         #endif",
+        "2",
+    );
+
+    check_preprocessed_result(
+        "#if 4 / 3 == 1
+         2
+         #endif",
+        "2",
     );
 
     // TODO test expressions?
