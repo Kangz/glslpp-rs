@@ -45,6 +45,7 @@ impl<T> From<StepExit> for Step<T> {
     }
 }
 
+#[allow(clippy::upper_case_acronyms)]
 trait MELexer {
     fn step(&mut self) -> Step<Token>;
     fn get_define(&self, name: &str) -> Option<&Rc<Define>>;
@@ -931,7 +932,7 @@ impl MacroProcessor {
             }
         }
 
-        Ok(lexer.step()?)
+        lexer.step()
     }
 
     fn step(&mut self, lexer: &mut dyn MELexer) -> Step<Token> {
