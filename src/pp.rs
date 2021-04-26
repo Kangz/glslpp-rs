@@ -45,6 +45,7 @@ impl<T> From<StepExit> for Step<T> {
     }
 }
 
+#[allow(clippy::upper_case_acronyms)]
 trait MELexer {
     fn step(&mut self) -> Step<Token>;
     fn get_define(&self, name: &str) -> Option<&Rc<Define>>;
@@ -355,23 +356,29 @@ impl<'a> DirectiveProcessor<'a> {
             return self.consume_until_newline();
         }
 
-        let token = self.expect_a_lexer_token(directive_location)?;
+        let line = self.gather_until_newline()?;
 
-        // TODO support expressions for the line number.
-        // TODO figure out what to do with the file, either number or string?
+        let mut parser = if_parser::IfParser::new(line, &self.defines, directive_location, false);
+        let line = parser.evaluate_expression()?;
 
         // Validates that the line is between 0 and 2^31 as per the C standard.
-        match token.value {
-            LexerTokenValue::Integer(i) => {
-                if i.value >= (1u64 << 32u64) {
-                    return Err(make_line_overflow_error(token.location));
-                }
-                self.line_offset = i.value as i64 - directive_location.line as i64;
-            }
-            _ => return Err(make_unexpected_error(token)),
-        };
+        if line as u64 >= (1 << 32) {
+            return Err(make_line_overflow_error(directive_location));
+        }
+        self.line_offset = line - directive_location.line as i64;
 
-        self.expect_lexer_token(LexerTokenValue::NewLine, token.location)?;
+        if parser.peek()?.is_some() {
+            // TODO figure out what to do with the file, either number or string?
+            let _source_id = parser.evaluate_expression()?;
+        }
+
+        if let Some(token) = parser.peek()? {
+            return Err(StepExit::Error((
+                PreprocessorError::UnexpectedToken(token.value),
+                token.location,
+            )));
+        }
+
         Ok(())
     }
 
@@ -931,7 +938,7 @@ impl MacroProcessor {
             }
         }
 
-        Ok(lexer.step()?)
+        lexer.step()
     }
 
     fn step(&mut self, lexer: &mut dyn MELexer) -> Step<Token> {

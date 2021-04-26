@@ -960,16 +960,14 @@ fn parse_line() {
     check_preprocessed_result(
         "#line 4u
          #line 3
-         #line 0xF00",
-        "",
+         #line 0xF00
+         __LINE__",
+        "0xF01u",
     );
 
     // Test with something other than a number after #line (including a newline)
-    check_preprocessing_error(
-        "#line !",
-        PreprocessorError::UnexpectedToken(TokenValue::Punct(Punct::Bang)),
-    );
-    check_preprocessing_error("#line", PreprocessorError::UnexpectedNewLine);
+    check_preprocessing_error("#line !", PreprocessorError::UnexpectedEndOfInput);
+    check_preprocessing_error("#line", PreprocessorError::UnexpectedEndOfInput);
     check_preprocessing_error(
         "#line foo",
         PreprocessorError::UnexpectedToken(TokenValue::Ident("foo".into())),
@@ -979,24 +977,36 @@ fn parse_line() {
     check_preprocessed_result(
         "#if 0
          #line !
-         #endif",
-        "",
+         #endif
+         __LINE__",
+        "4u",
     );
     // Test that #line must have a newline after the integer (this will change when #line
     // supports constant expressions)
     check_preprocessing_error("#line 1 #", PreprocessorError::UnexpectedHash);
 
-    // Test that the integer must be non-negative.
-    // TODO enabled once #line supports parsing expressions.
-    // check_preprocessing_error(
-    //     "#line -1",
-    //     PreprocessorError::LineOverflow,
-    // );
-
     // test that the integer must fit in a u32
     check_preprocessing_error("#line 4294967296u", PreprocessorError::LineOverflow);
     // test that the integer must fit in a u32
     check_preprocessed_result("#line 4294967295u", "");
+    check_preprocessing_error("#line -1", PreprocessorError::LineOverflow);
+
+    // Test some expression
+    check_preprocessed_result(
+        "#line 20 << 2 + 1
+         __LINE__",
+        "161u",
+    );
+    check_preprocessed_result(
+        "#line 20 * 0 -2 + 100
+        __LINE__",
+        "99u",
+    );
+    check_preprocessed_result(
+        "#line 0 (1 << 1 * (10)) % 2
+        __LINE__",
+        "1u",
+    );
 }
 
 #[test]
