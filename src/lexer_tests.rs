@@ -103,6 +103,15 @@ fn chars_and_location() {
     assert_eq!(it.next(), c(3, 4..5, '\n'));
     assert_eq!(it.next(), c(4, 5..7, '\n'));
     assert_eq!(it.next(), None);
+
+    // Unicode handling
+    let mut it = CharsAndLocation::new("a→üs🦀");
+    assert_eq!(it.next(), c(1, 0..1, 'a'));
+    assert_eq!(it.next(), c(1, 1..4, '→'));
+    assert_eq!(it.next(), c(1, 4..6, 'ü'));
+    assert_eq!(it.next(), c(1, 6..7, 's'));
+    assert_eq!(it.next(), c(1, 7..11, '🦀'));
+    assert_eq!(it.next(), None);
 }
 
 #[test]
@@ -233,10 +242,37 @@ fn lex_hash() {
         unwrap_token_value(it.next()),
         TokenValue::Ident("a".to_string())
     );
-    assert_eq!(unwrap_token_value(it.next()), TokenValue::Hash);
+    let token = unwrap_token(it.next());
+    assert_eq!(token.value, TokenValue::Hash);
+    assert_eq!(
+        token.location,
+        Location {
+            line: 1,
+            start: 1,
+            end: 2
+        }
+    );
     assert_eq!(
         unwrap_token_value(it.next()),
         TokenValue::Ident("b".to_string())
+    );
+    expect_lexer_end(&mut it);
+
+    let mut it = Lexer::new("\nvoid #");
+    assert_eq!(unwrap_token_value(it.next()), TokenValue::NewLine);
+    assert_eq!(
+        unwrap_token_value(it.next()),
+        TokenValue::Ident("void".into())
+    );
+    let token = unwrap_token(it.next());
+    assert_eq!(token.value, TokenValue::Hash);
+    assert_eq!(
+        token.location,
+        Location {
+            line: 2,
+            start: 6,
+            end: 7
+        }
     );
     expect_lexer_end(&mut it);
 }
@@ -368,17 +404,35 @@ fn lex_metadata() {
 fn lex_identifiers() {
     // Test some basic identifier cases
     let mut it = Lexer::new("foo BA_R baz0");
+    let token = unwrap_token(it.next());
+    assert_eq!(token.value, TokenValue::Ident("foo".to_string()));
     assert_eq!(
-        unwrap_token_value(it.next()),
-        TokenValue::Ident("foo".to_string())
+        token.location,
+        Location {
+            start: 0,
+            end: 3,
+            line: 1
+        }
     );
+    let token = unwrap_token(it.next());
+    assert_eq!(token.value, TokenValue::Ident("BA_R".to_string()));
     assert_eq!(
-        unwrap_token_value(it.next()),
-        TokenValue::Ident("BA_R".to_string())
+        token.location,
+        Location {
+            start: 4,
+            end: 8,
+            line: 1
+        }
     );
+    let token = unwrap_token(it.next());
+    assert_eq!(token.value, TokenValue::Ident("baz0".to_string()));
     assert_eq!(
-        unwrap_token_value(it.next()),
-        TokenValue::Ident("baz0".to_string())
+        token.location,
+        Location {
+            start: 9,
+            end: 13,
+            line: 1
+        }
     );
     expect_lexer_end(&mut it);
 
@@ -416,9 +470,36 @@ fn lex_decimal() {
     // Test some basic cases
     let mut it = Lexer::new("1 0u 42 65536U");
     assert_eq!(unwrap_token_value(it.next()), 1.into());
-    assert_eq!(unwrap_token_value(it.next()), 0u32.into());
-    assert_eq!(unwrap_token_value(it.next()), 42.into());
-    assert_eq!(unwrap_token_value(it.next()), 65536u32.into());
+    let token = unwrap_token(it.next());
+    assert_eq!(token.value, 0u32.into());
+    assert_eq!(
+        token.location,
+        Location {
+            start: 2,
+            end: 4,
+            line: 1
+        }
+    );
+    let token = unwrap_token(it.next());
+    assert_eq!(token.value, 42.into());
+    assert_eq!(
+        token.location,
+        Location {
+            start: 5,
+            end: 7,
+            line: 1
+        }
+    );
+    let token = unwrap_token(it.next());
+    assert_eq!(token.value, 65536u32.into());
+    assert_eq!(
+        token.location,
+        Location {
+            start: 8,
+            end: 14,
+            line: 1
+        }
+    );
     expect_lexer_end(&mut it);
 
     // Test splitting with identifiers
@@ -499,8 +580,26 @@ fn lex_hexadecimal() {
     let mut it = Lexer::new("0x1 0X0u 0xBaFfe 0XcaFeU");
     assert_eq!(unwrap_token_value(it.next()), 1.into());
     assert_eq!(unwrap_token_value(it.next()), 0u32.into());
-    assert_eq!(unwrap_token_value(it.next()), 0xBAFFE.into());
-    assert_eq!(unwrap_token_value(it.next()), 0xCAFEu32.into());
+    let token = unwrap_token(it.next());
+    assert_eq!(token.value, 0xBAFFE.into());
+    assert_eq!(
+        token.location,
+        Location {
+            start: 9,
+            end: 16,
+            line: 1
+        }
+    );
+    let token = unwrap_token(it.next());
+    assert_eq!(token.value, 0xCAFEu32.into());
+    assert_eq!(
+        token.location,
+        Location {
+            start: 17,
+            end: 24,
+            line: 1
+        }
+    );
     expect_lexer_end(&mut it);
 
     // Test with redundant zeroes
@@ -665,8 +764,26 @@ fn lex_punctuation() {
     // Test parsing some of the token (but not all, that'd be too many tests!)
     let mut it = Lexer::new("+ != <<=");
     assert_eq!(unwrap_token_value(it.next()), Punct::Plus.into());
-    assert_eq!(unwrap_token_value(it.next()), Punct::NotEqual.into());
-    assert_eq!(unwrap_token_value(it.next()), Punct::LeftShiftAssign.into());
+    let token = unwrap_token(it.next());
+    assert_eq!(token.value, Punct::NotEqual.into());
+    assert_eq!(
+        token.location,
+        Location {
+            start: 2,
+            end: 4,
+            line: 1,
+        }
+    );
+    let token = unwrap_token(it.next());
+    assert_eq!(token.value, Punct::LeftShiftAssign.into());
+    assert_eq!(
+        token.location,
+        Location {
+            start: 5,
+            end: 8,
+            line: 1,
+        }
+    );
     expect_lexer_end(&mut it);
 
     // Test parsing a token that's a prefix of another one just before EOF

@@ -1,5 +1,6 @@
 use crate::token::{Float, Integer, Location, PreprocessorError, Punct};
 use std::{iter::Peekable, str::Chars};
+use unicode_xid::UnicodeXID;
 
 type CharAndLocation = (char, Location);
 
@@ -243,21 +244,19 @@ impl<'a> Lexer<'a> {
         self.had_comments
     }
 
-    #[allow(clippy::unnecessary_wraps)]
     fn parse_identifier(&mut self) -> Result<TokenValue, PreprocessorError> {
         let mut identifier = String::default();
 
-        while let Some(&(current, _)) = self.inner.peek() {
-            match current {
-                'a'..='z' | 'A'..='Z' | '_' | '0'..='9' => {
-                    self.inner.next();
-                    identifier.push(current);
-                }
-                _ => {
-                    break;
-                }
-            }
+        if self
+            .inner
+            .peek()
+            .map_or(false, |c| c.0.is_xid_start() || c.0 == '_')
+        {
+            identifier.push(self.inner.next().unwrap().0);
         }
+
+        let rest = self.consume_chars(|c| c.is_xid_continue());
+        identifier.push_str(&rest);
 
         // TODO check if identifier is larger than the limit.
         Ok(TokenValue::Ident(identifier))
@@ -265,8 +264,9 @@ impl<'a> Lexer<'a> {
 
     fn parse_integer_signedness_suffix(&mut self) -> bool {
         match self.inner.peek() {
-            Some(('u', _)) | Some(('U', _)) => {
+            Some(&('u', loc)) | Some(&('U', loc)) => {
                 self.inner.next();
+                self.last_location.end = loc.end;
                 false
             }
             _ => true,
@@ -285,8 +285,9 @@ impl<'a> Lexer<'a> {
         match self.inner.peek() {
             Some(('l', _)) | Some(('L', _)) => Err(PreprocessorError::NotSupported64BitLiteral),
             Some(('h', _)) | Some(('H', _)) => Err(PreprocessorError::NotSupported16BitLiteral),
-            Some(('f', _)) | Some(('F', _)) => {
+            Some(&('f', loc)) | Some(&('F', loc)) => {
                 self.inner.next();
+                self.last_location.end = loc.end;
                 Ok(32)
             }
             _ => Ok(32),
@@ -296,9 +297,10 @@ impl<'a> Lexer<'a> {
     fn consume_chars(&mut self, filter: impl Fn(char) -> bool) -> String {
         let mut result: String = Default::default();
 
-        while let Some(&(current, _)) = self.inner.peek() {
+        while let Some(&(current, loc)) = self.inner.peek() {
             if filter(current) {
                 self.inner.next();
+                self.last_location.end = loc.end;
                 result.push(current);
             } else {
                 break;
@@ -317,8 +319,9 @@ impl<'a> Lexer<'a> {
         // Handle hexadecimal numbers that needs to consume a..f in addition to digits.
         if first_char == '0' {
             match self.inner.peek() {
-                Some(('x', _)) | Some(('X', _)) => {
+                Some(&('x', loc)) | Some(&('X', loc)) => {
                     self.inner.next();
+                    self.last_location.end = loc.end;
 
                     raw += &self.consume_chars(|c| matches!(c, '0'..='9' | 'a'..='f' | 'A'..='F'));
                     integer_radix = 16;
@@ -340,8 +343,9 @@ impl<'a> Lexer<'a> {
             // Parse any digits at the end of integers, or for the non-fractional part of floats.
             raw += &self.consume_chars(|c| ('0'..='9').contains(&c));
 
-            if let Some(('.', _)) = self.inner.peek() {
+            if let Some(&('.', loc)) = self.inner.peek() {
                 self.inner.next();
+                self.last_location.end = loc.end;
                 raw.push('.');
                 is_float = true;
             }
@@ -476,9 +480,10 @@ impl<'a> Lexer<'a> {
 
         if let Some((punct, size)) = maybe_punct {
             self.inner = save_point;
-            for _i in 0..size {
+            for _ in 0..size {
                 self.inner.next();
             }
+            self.last_location.end += size - 1;
             Ok(punct.into())
         } else if char0 == '#' {
             self.inner = save_point;
@@ -501,6 +506,8 @@ impl<'a> Iterator for Lexer<'a> {
             let was_start_of_line = self.start_of_line;
             self.start_of_line = false;
 
+            self.last_location = current_loc;
+
             let value = match current_char {
                 ' ' | '\t' | '\x0b' | '\x0c' | COMMENT_SENTINEL_VALUE => {
                     if current_char == COMMENT_SENTINEL_VALUE {
@@ -518,7 +525,6 @@ impl<'a> Iterator for Lexer<'a> {
                     Ok(TokenValue::NewLine)
                 }
 
-                'a'..='z' | 'A'..='Z' | '_' => self.parse_identifier(),
                 c @ '0'..='9' => {
                     self.inner.next();
                     self.parse_number(c)
@@ -533,15 +539,18 @@ impl<'a> Iterator for Lexer<'a> {
                         _ => Ok(TokenValue::Punct(Punct::Dot)),
                     }
                 }
-
-                _ => self.parse_punctuation(),
+                _ => {
+                    if current_char.is_xid_start() || current_char == '_' {
+                        self.parse_identifier()
+                    } else {
+                        self.parse_punctuation()
+                    }
+                }
             };
-
-            self.last_location = current_loc;
 
             return Some(value.map_err(|e| (e, current_loc)).map(|t| Token {
                 value: t,
-                location: current_loc,
+                location: self.last_location,
                 leading_whitespace: had_leading_whitespace,
                 start_of_line: was_start_of_line,
             }));

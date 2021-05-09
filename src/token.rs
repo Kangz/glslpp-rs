@@ -27,6 +27,12 @@ impl From<Location> for Range<u32> {
     }
 }
 
+impl From<Location> for Range<usize> {
+    fn from(loc: Location) -> Range<usize> {
+        loc.start as usize..loc.end as usize
+    }
+}
+
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub enum Punct {
     // Compound assignments
