@@ -3,9 +3,17 @@ use super::lexer::{
     COMMENT_SENTINEL_VALUE,
 };
 use super::token::{Float, Integer, Location, PreprocessorError, Punct};
+use std::ops::Range;
 
-fn c(line: u32, pos: u32, c: char) -> Option<(char, Location)> {
-    Some((c, Location { line, pos }))
+fn c(line: u32, pos: Range<u32>, c: char) -> Option<(char, Location)> {
+    Some((
+        c,
+        Location {
+            line,
+            start: pos.start,
+            end: pos.end,
+        },
+    ))
 }
 
 fn unwrap_token(item: Option<LexerItem>) -> Token {
@@ -55,45 +63,45 @@ impl From<f32> for TokenValue {
 fn chars_and_location() {
     // Test handling of characters in a line.
     let mut it = CharsAndLocation::new("abc");
-    assert_eq!(it.next(), c(1, 0, 'a'));
-    assert_eq!(it.next(), c(1, 1, 'b'));
-    assert_eq!(it.next(), c(1, 2, 'c'));
+    assert_eq!(it.next(), c(1, 0..1, 'a'));
+    assert_eq!(it.next(), c(1, 1..2, 'b'));
+    assert_eq!(it.next(), c(1, 2..3, 'c'));
     assert_eq!(it.next(), None);
 
     // Test handling of \n in the regular case.
     let mut it = CharsAndLocation::new("a\nb");
-    assert_eq!(it.next(), c(1, 0, 'a'));
-    assert_eq!(it.next(), c(1, 1, '\n'));
-    assert_eq!(it.next(), c(2, 0, 'b'));
+    assert_eq!(it.next(), c(1, 0..1, 'a'));
+    assert_eq!(it.next(), c(1, 1..2, '\n'));
+    assert_eq!(it.next(), c(2, 2..3, 'b'));
     assert_eq!(it.next(), None);
 
     // Test handling of \r in the regular case.
     let mut it = CharsAndLocation::new("a\rb");
-    assert_eq!(it.next(), c(1, 0, 'a'));
-    assert_eq!(it.next(), c(1, 1, '\n'));
-    assert_eq!(it.next(), c(2, 0, 'b'));
+    assert_eq!(it.next(), c(1, 0..1, 'a'));
+    assert_eq!(it.next(), c(1, 1..2, '\n'));
+    assert_eq!(it.next(), c(2, 2..3, 'b'));
     assert_eq!(it.next(), None);
 
     // Test handling of \n\r.
     let mut it = CharsAndLocation::new("a\n\rb");
-    assert_eq!(it.next(), c(1, 0, 'a'));
-    assert_eq!(it.next(), c(1, 1, '\n'));
-    assert_eq!(it.next(), c(2, 0, 'b'));
+    assert_eq!(it.next(), c(1, 0..1, 'a'));
+    assert_eq!(it.next(), c(1, 1..3, '\n'));
+    assert_eq!(it.next(), c(2, 3..4, 'b'));
     assert_eq!(it.next(), None);
 
     // Test handling of \r\n.
     let mut it = CharsAndLocation::new("a\r\nb");
-    assert_eq!(it.next(), c(1, 0, 'a'));
-    assert_eq!(it.next(), c(1, 1, '\n'));
-    assert_eq!(it.next(), c(2, 0, 'b'));
+    assert_eq!(it.next(), c(1, 0..1, 'a'));
+    assert_eq!(it.next(), c(1, 1..3, '\n'));
+    assert_eq!(it.next(), c(2, 3..4, 'b'));
     assert_eq!(it.next(), None);
 
     // Test handling of a mix of \r and \n
     let mut it = CharsAndLocation::new("\n\r\n\r\r\r\n");
-    assert_eq!(it.next(), c(1, 0, '\n'));
-    assert_eq!(it.next(), c(2, 0, '\n'));
-    assert_eq!(it.next(), c(3, 0, '\n'));
-    assert_eq!(it.next(), c(4, 0, '\n'));
+    assert_eq!(it.next(), c(1, 0..2, '\n'));
+    assert_eq!(it.next(), c(2, 2..4, '\n'));
+    assert_eq!(it.next(), c(3, 4..5, '\n'));
+    assert_eq!(it.next(), c(4, 5..7, '\n'));
     assert_eq!(it.next(), None);
 }
 
@@ -101,21 +109,21 @@ fn chars_and_location() {
 fn skip_backslash_newline() {
     // Test a simple case.
     let mut it = SkipBackslashNewline::new("a\\\nb");
-    assert_eq!(it.next(), c(1, 0, 'a'));
-    assert_eq!(it.next(), c(2, 0, 'b'));
+    assert_eq!(it.next(), c(1, 0..1, 'a'));
+    assert_eq!(it.next(), c(2, 3..4, 'b'));
     assert_eq!(it.next(), None);
 
     // Test a double case that requires the loop in the algorithm.
     let mut it = SkipBackslashNewline::new("a\\\n\\\nb");
-    assert_eq!(it.next(), c(1, 0, 'a'));
-    assert_eq!(it.next(), c(3, 0, 'b'));
+    assert_eq!(it.next(), c(1, 0..1, 'a'));
+    assert_eq!(it.next(), c(3, 5..6, 'b'));
     assert_eq!(it.next(), None);
 
     // Test a backslash on its own
     let mut it = SkipBackslashNewline::new("a\\b");
-    assert_eq!(it.next(), c(1, 0, 'a'));
-    assert_eq!(it.next(), c(1, 1, '\\'));
-    assert_eq!(it.next(), c(1, 2, 'b'));
+    assert_eq!(it.next(), c(1, 0..1, 'a'));
+    assert_eq!(it.next(), c(1, 1..2, '\\'));
+    assert_eq!(it.next(), c(1, 2..3, 'b'));
     assert_eq!(it.next(), None);
 
     // Test a case just before EOF
@@ -127,68 +135,63 @@ fn skip_backslash_newline() {
 fn replace_comments() {
     // Test a slash that's not a comment
     let mut it = ReplaceComments::new("a/b");
-    assert_eq!(it.next(), c(1, 0, 'a'));
-    assert_eq!(it.next(), c(1, 1, '/'));
-    assert_eq!(it.next(), c(1, 2, 'b'));
+    assert_eq!(it.next(), c(1, 0..1, 'a'));
+    assert_eq!(it.next(), c(1, 1..2, '/'));
+    assert_eq!(it.next(), c(1, 2..3, 'b'));
     assert_eq!(it.next(), None);
 
     // Test a slash with nothing afterwards
     let mut it = ReplaceComments::new("a/");
-    assert_eq!(it.next(), c(1, 0, 'a'));
-    assert_eq!(it.next(), c(1, 1, '/'));
+    assert_eq!(it.next(), c(1, 0..1, 'a'));
+    assert_eq!(it.next(), c(1, 1..2, '/'));
     assert_eq!(it.next(), None);
 
     // Test a single-line comment
     let mut it = ReplaceComments::new("a//foo\nb");
-    assert_eq!(it.next(), c(1, 0, 'a'));
-    assert_eq!(it.next(), c(1, 1, COMMENT_SENTINEL_VALUE));
-    assert_eq!(it.next(), c(1, 6, '\n'));
-    assert_eq!(it.next(), c(2, 0, 'b'));
+    assert_eq!(it.next(), c(1, 0..1, 'a'));
+    assert_eq!(it.next(), c(1, 1..6, COMMENT_SENTINEL_VALUE));
+    assert_eq!(it.next(), c(1, 6..7, '\n'));
+    assert_eq!(it.next(), c(2, 7..8, 'b'));
     assert_eq!(it.next(), None);
 
     // Test a single-line comment without an ending newline
     let mut it = ReplaceComments::new("//foo");
-    assert_eq!(it.next(), c(1, 0, COMMENT_SENTINEL_VALUE));
+    assert_eq!(it.next(), c(1, 0..5, COMMENT_SENTINEL_VALUE));
     assert_eq!(it.next(), None);
 
     // Test a single-line comment without nothing afterwards
     let mut it = ReplaceComments::new("//");
-    assert_eq!(it.next(), c(1, 0, COMMENT_SENTINEL_VALUE));
+    assert_eq!(it.next(), c(1, 0..2, COMMENT_SENTINEL_VALUE));
     assert_eq!(it.next(), None);
 
     // Test a single-line comment with a line continuation
     let mut it = ReplaceComments::new("//foo\\\na");
-    assert_eq!(it.next(), c(1, 0, COMMENT_SENTINEL_VALUE));
-    assert_eq!(it.next(), None);
-
-    // Test a single-line comment with a line continuation
-    let mut it = ReplaceComments::new("//foo\\\na");
-    assert_eq!(it.next(), c(1, 0, COMMENT_SENTINEL_VALUE));
+    assert_eq!(it.next(), c(1, 0..8, COMMENT_SENTINEL_VALUE));
     assert_eq!(it.next(), None);
 
     // Test a multi-line comment
     let mut it = ReplaceComments::new("a/*fo\n\no*/b");
-    assert_eq!(it.next(), c(1, 0, 'a'));
-    assert_eq!(it.next(), c(1, 1, COMMENT_SENTINEL_VALUE));
-    assert_eq!(it.next(), c(3, 3, 'b'));
+    assert_eq!(it.next(), c(1, 0..1, 'a'));
+    assert_eq!(it.next(), c(1, 1..10, COMMENT_SENTINEL_VALUE));
+    assert_eq!(it.next(), c(3, 10..11, 'b'));
     assert_eq!(it.next(), None);
 
     // Test a multi-line comment, without a proper ending (only the *)
     let mut it = ReplaceComments::new("a/*fo\n\no*");
-    assert_eq!(it.next(), c(1, 0, 'a'));
-    assert_eq!(it.next(), c(1, 1, COMMENT_SENTINEL_VALUE));
+    assert_eq!(it.next(), c(1, 0..1, 'a'));
+    assert_eq!(it.next(), c(1, 1..9, COMMENT_SENTINEL_VALUE));
     assert_eq!(it.next(), None);
 
     // Test a multi-line comment, without a proper ending (nothing)
     let mut it = ReplaceComments::new("a/*fo\n\no");
-    assert_eq!(it.next(), c(1, 0, 'a'));
-    assert_eq!(it.next(), c(1, 1, COMMENT_SENTINEL_VALUE));
+    assert_eq!(it.next(), c(1, 0..1, 'a'));
+    assert_eq!(it.next(), c(1, 1..8, COMMENT_SENTINEL_VALUE));
     assert_eq!(it.next(), None);
 
     // Test a multi-line comment, or /*/ not being a complete one
     let mut it = ReplaceComments::new("a/*/b");
-    assert_eq!(it.next(), c(1, 0, 'a'));
-    assert_eq!(it.next(), c(1, 1, COMMENT_SENTINEL_VALUE));
+    assert_eq!(it.next(), c(1, 0..1, 'a'));
+    assert_eq!(it.next(), c(1, 1..5, COMMENT_SENTINEL_VALUE));
     assert_eq!(it.next(), None);
 }
 
@@ -246,7 +249,11 @@ fn lex_metadata() {
         unwrap_token(it.next()),
         Token {
             value: 1.into(),
-            location: Location { line: 1, pos: 0 },
+            location: Location {
+                line: 1,
+                start: 0,
+                end: 1
+            },
             leading_whitespace: true,
             start_of_line: true
         }
@@ -261,7 +268,11 @@ fn lex_metadata() {
         unwrap_token(it.next()),
         Token {
             value: 1.into(),
-            location: Location { line: 1, pos: 1 },
+            location: Location {
+                line: 1,
+                start: 1,
+                end: 2
+            },
             leading_whitespace: true,
             start_of_line: true
         }
@@ -272,7 +283,11 @@ fn lex_metadata() {
         unwrap_token(it.next()),
         Token {
             value: 2.into(),
-            location: Location { line: 2, pos: 2 },
+            location: Location {
+                line: 2,
+                start: 7,
+                end: 8
+            },
             leading_whitespace: true,
             start_of_line: false
         }
@@ -281,7 +296,11 @@ fn lex_metadata() {
         unwrap_token(it.next()),
         Token {
             value: 3.into(),
-            location: Location { line: 2, pos: 4 },
+            location: Location {
+                line: 2,
+                start: 9,
+                end: 10
+            },
             leading_whitespace: true,
             start_of_line: false
         }
@@ -291,7 +310,11 @@ fn lex_metadata() {
         unwrap_token(it.next()),
         Token {
             value: Punct::Plus.into(),
-            location: Location { line: 2, pos: 5 },
+            location: Location {
+                line: 2,
+                start: 10,
+                end: 11
+            },
             leading_whitespace: false,
             start_of_line: false
         }
@@ -301,7 +324,11 @@ fn lex_metadata() {
         unwrap_token(it.next()),
         Token {
             value: TokenValue::NewLine,
-            location: Location { line: 2, pos: 6 },
+            location: Location {
+                line: 2,
+                start: 11,
+                end: 12
+            },
             leading_whitespace: false,
             start_of_line: false
         }
@@ -311,7 +338,11 @@ fn lex_metadata() {
         unwrap_token(it.next()),
         Token {
             value: 4.into(),
-            location: Location { line: 3, pos: 0 },
+            location: Location {
+                line: 3,
+                start: 12,
+                end: 13
+            },
             leading_whitespace: true,
             start_of_line: true
         }
@@ -321,7 +352,11 @@ fn lex_metadata() {
         unwrap_token(it.next()),
         Token {
             value: TokenValue::NewLine,
-            location: Location { line: 3, pos: 1 },
+            location: Location {
+                line: 3,
+                start: 13,
+                end: 13
+            },
             leading_whitespace: false,
             start_of_line: false
         }
