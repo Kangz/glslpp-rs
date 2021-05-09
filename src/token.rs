@@ -1,7 +1,30 @@
+use std::ops::Range;
+
+//TODO: Source file
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub struct Location {
-    pub line: u32,
-    pub pos: u32,
+    /// Byte offset into the source string where the first char begins
+    pub start: u32,
+    /// Byte offset into the source string where the last char ends
+    pub end: u32,
+    // used internally
+    pub(crate) line: u32,
+}
+
+impl Default for Location {
+    fn default() -> Self {
+        Location {
+            start: 0,
+            end: 0,
+            line: 1,
+        }
+    }
+}
+
+impl From<Location> for Range<u32> {
+    fn from(loc: Location) -> Range<u32> {
+        loc.start..loc.end
+    }
 }
 
 #[derive(Clone, Copy, PartialEq, Debug)]

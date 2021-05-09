@@ -1,5 +1,5 @@
 use crate::token::{Float, Integer, Location, PreprocessorError, Punct};
-use std::iter::Peekable;
+use std::{iter::Peekable, str::Chars};
 
 type CharAndLocation = (char, Location);
 
@@ -15,17 +15,17 @@ type CharAndLocation = (char, Location);
 //      affected by the removal of newlines in phase 6 of compilation.
 //
 // It expects that phases 1 to 3 are already done and that valid utf8 is passed in.
-#[derive(Clone, Copy)]
+#[derive(Clone)]
 pub struct CharsAndLocation<'a> {
-    input: &'a str,
+    chars: Peekable<Chars<'a>>,
     loc: Location,
 }
 
 impl<'a> CharsAndLocation<'a> {
     pub fn new(input: &'a str) -> Self {
         CharsAndLocation {
-            input,
-            loc: Location { line: 1, pos: 0 },
+            chars: input.chars().peekable(),
+            loc: Location::default(),
         }
     }
 }
@@ -34,40 +34,35 @@ impl<'a> Iterator for CharsAndLocation<'a> {
     type Item = CharAndLocation;
 
     fn next(&mut self) -> Option<Self::Item> {
-        let mut chars = self.input.chars();
-        let current = chars.next()?;
-        let current_loc = self.loc;
+        let current = self.chars.next()?;
+        self.loc.start = self.loc.end;
+        self.loc.end += current.len_utf8() as u32;
 
         match current {
             '\n' => {
                 // Consume the token but see if we can grab a \r that follows
-                self.input = chars.as_str();
-                if chars.next() == Some('\r') {
-                    self.input = chars.as_str();
+                if self.chars.peek() == Some(&'\r') {
+                    self.chars.next();
+                    self.loc.end += 1;
                 }
 
+                let res = Some(('\n', self.loc));
                 self.loc.line += 1;
-                self.loc.pos = 0;
-                Some(('\n', current_loc))
+                res
             }
             '\r' => {
                 // Consume the token but see if we can grab a \n that follows
-                self.input = chars.as_str();
-                if chars.next() == Some('\n') {
-                    self.input = chars.as_str();
+                if self.chars.peek() == Some(&'\n') {
+                    self.chars.next();
+                    self.loc.end += 1;
                 }
 
+                let res = Some(('\n', self.loc));
                 self.loc.line += 1;
-                self.loc.pos = 0;
-                Some(('\n', current_loc))
+                res
             }
 
-            _ => {
-                self.input = chars.as_str();
-
-                self.loc.pos += 1;
-                Some((current, current_loc))
-            }
+            _ => Some((current, self.loc)),
         }
     }
 }
@@ -78,7 +73,7 @@ impl<'a> Iterator for CharsAndLocation<'a> {
 //     no whitespace is substituted, thereby allowing a single preprocessing token to span a
 //     newline. This operation is not recursive; any new {backslash newline} sequences generated
 //     are not removed.
-#[derive(Clone, Copy)]
+#[derive(Clone)]
 pub struct SkipBackslashNewline<'a> {
     inner: CharsAndLocation<'a>,
 }
@@ -98,7 +93,7 @@ impl<'a> Iterator for SkipBackslashNewline<'a> {
         let mut current = self.inner.next()?;
 
         while current.0 == '\\' {
-            let mut save_point = self.inner;
+            let mut save_point = self.inner.clone();
             if let Some(('\n', _)) = save_point.next() {
                 self.inner = save_point;
                 current = self.next()?;
@@ -117,7 +112,7 @@ impl<'a> Iterator for SkipBackslashNewline<'a> {
 //      byte sequences are allowed within comments. '//' style comments include the initial '//'
 //      marker and continue up to, but not including, the terminating newline. '/…/' comments
 //      include both the start and end marker.
-#[derive(Clone, Copy)]
+#[derive(Clone)]
 pub struct ReplaceComments<'a> {
     inner: SkipBackslashNewline<'a>,
 }
@@ -139,37 +134,46 @@ impl<'a> Iterator for ReplaceComments<'a> {
     type Item = CharAndLocation;
 
     fn next(&mut self) -> Option<Self::Item> {
-        let current = self.inner.next()?;
+        let mut current = self.inner.next()?;
 
         if current.0 != '/' {
-            assert!(current.0 != COMMENT_SENTINEL_VALUE);
+            debug_assert!(current.0 != COMMENT_SENTINEL_VALUE);
             return Some(current);
         }
 
-        let mut save_point = self.inner;
+        let mut save_point = self.inner.clone();
         match self.next() {
             // The // case, consume until but not including the next \n
             Some(('/', _)) => {
-                save_point = self.inner;
-                while let Some((next, _)) = self.inner.next() {
+                current.1.end += 1;
+
+                save_point = self.inner.clone();
+                while let Some((next, loc)) = self.inner.next() {
                     if next == '\n' {
+                        current.1.end = loc.start;
                         break;
                     }
-                    save_point = self.inner
+                    current.1.end = loc.end;
+                    save_point = self.inner.clone()
                 }
                 self.inner = save_point;
+
                 Some((COMMENT_SENTINEL_VALUE, current.1))
             }
 
             // The /* case, consume until the next */
             Some(('*', _)) => {
+                current.1.end += 1;
+
                 let mut was_star = false;
-                while let Some((next, _)) = self.inner.next() {
+                while let Some((next, loc)) = self.inner.next() {
+                    current.1.end = loc.end;
                     if was_star && next == '/' {
                         break;
                     }
                     was_star = next == '*';
                 }
+
                 Some((COMMENT_SENTINEL_VALUE, current.1))
             }
 
@@ -230,7 +234,7 @@ impl<'a> Lexer<'a> {
             inner: ReplaceComments::new(input).peekable(),
             leading_whitespace: true,
             start_of_line: true,
-            last_location: Location { line: 0, pos: 0 },
+            last_location: Location::default(),
             had_comments: false,
         }
     }
@@ -546,8 +550,8 @@ impl<'a> Iterator for Lexer<'a> {
         // Do the C hack of always ending with a newline so that preprocessor directives are ended.
         if !self.start_of_line {
             self.start_of_line = true;
+            self.last_location.start = self.last_location.end;
 
-            self.last_location.pos += 1;
             Some(Ok(Token {
                 value: TokenValue::NewLine,
                 location: self.last_location,
