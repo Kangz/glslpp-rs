@@ -1,8 +1,8 @@
-# Lazy jobs running on master post merges.
+# Lazy jobs running on main post merges.
 name: lazy
 on:
   push:
-    branches: [master]
+    branches: [main]
 
 jobs:
   coverage:
