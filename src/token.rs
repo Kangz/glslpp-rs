@@ -5,9 +5,10 @@ use std::ops::Range;
 pub struct Location {
     /// Byte offset into the source string where the first char begins
     pub start: u32,
-    /// Byte offset into the source string where the last char ends
+    /// Byte offset into the source string where the first char not belonging to
+    /// this `Location` begins
     pub end: u32,
-    // used internally
+    /// used internally in the `#line` directive and the `__LINE__` macro
     pub(crate) line: u32,
 }
 

@@ -244,6 +244,8 @@ impl<'a> Lexer<'a> {
         self.had_comments
     }
 
+    // TODO: Make a runtime flag to toggle unicode identifiers support
+    // The glsl spec only allows ascii identifiers
     fn parse_identifier(&mut self) -> Result<TokenValue, PreprocessorError> {
         let mut identifier = String::default();
 
@@ -540,6 +542,7 @@ impl<'a> Iterator for Lexer<'a> {
                     }
                 }
                 _ => {
+                    // TODO: see todo in `parse_identifier` for information
                     if current_char.is_xid_start() || current_char == '_' {
                         self.parse_identifier()
                     } else {
