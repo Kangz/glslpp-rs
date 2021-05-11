@@ -9,4 +9,4 @@
 
 A shader preprocessor and lexer in Rust.
 
-**WARNING**: this create is very work-in-progress: its interface will change and documentation is extremely lacking.
+**WARNING**: this crate is a work-in-progress: its interface will change and documentation is extremely lacking.
