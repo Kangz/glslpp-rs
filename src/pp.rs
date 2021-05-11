@@ -45,8 +45,7 @@ impl<T> From<StepExit> for Step<T> {
     }
 }
 
-#[allow(clippy::upper_case_acronyms)]
-trait MELexer {
+trait MeLexer {
     fn step(&mut self) -> Step<Token>;
     fn get_define(&self, name: &str) -> Option<&Rc<Define>>;
     fn apply_line_offset(&self, line: u32, location: Location) -> Step<u32>;
@@ -612,7 +611,7 @@ impl<'a> DirectiveProcessor<'a> {
     }
 }
 
-impl<'a> MELexer for DirectiveProcessor<'a> {
+impl<'a> MeLexer for DirectiveProcessor<'a> {
     fn step(&mut self) -> Step<Token> {
         let step = (|| {
             // TODO: if we are skipping invalid characters should be allowed.
@@ -679,7 +678,7 @@ impl MacroProcessor {
         &mut self,
         name: &str,
         location: Location,
-        lexer: &mut dyn MELexer,
+        lexer: &mut dyn MeLexer,
     ) -> Step<bool> {
         // Defines can be expanding only once, it is not possible to do recursive defines
         if self.defines_being_expanded.contains(name) {
@@ -770,7 +769,7 @@ impl MacroProcessor {
     // the location of the closing ).
     fn parse_define_call_arguments(
         &mut self,
-        lexer: &mut dyn MELexer,
+        lexer: &mut dyn MeLexer,
         mut current_location: Location,
     ) -> Step<(Vec<Vec<Token>>, Location)> {
         let mut paren_nesting = 0u32;
@@ -834,15 +833,15 @@ impl MacroProcessor {
         }
     }
 
-    fn expand_parameter(&self, lexer: &mut dyn MELexer, parameter: Vec<Token>) -> Step<Vec<Token>> {
+    fn expand_parameter(&self, lexer: &mut dyn MeLexer, parameter: Vec<Token>) -> Step<Vec<Token>> {
         struct ExpandParameterLexer<'a> {
-            parent_lexer: &'a dyn MELexer,
+            parent_lexer: &'a dyn MeLexer,
             expander: &'a MacroProcessor,
             tokens: &'a Vec<Token>,
             position: usize,
         }
 
-        impl<'a> MELexer for ExpandParameterLexer<'a> {
+        impl<'a> MeLexer for ExpandParameterLexer<'a> {
             fn step(&mut self) -> Step<Token> {
                 if let Some(token) = self.tokens.get(self.position) {
                     self.position += 1;
@@ -900,7 +899,7 @@ impl MacroProcessor {
         !self.define_invocations.is_empty()
     }
 
-    fn step_internal(&mut self, lexer: &mut dyn MELexer) -> Step<Token> {
+    fn step_internal(&mut self, lexer: &mut dyn MeLexer) -> Step<Token> {
         if let Some(step) = self.peeked.take() {
             return step;
         }
@@ -941,7 +940,7 @@ impl MacroProcessor {
         lexer.step()
     }
 
-    fn step(&mut self, lexer: &mut dyn MELexer) -> Step<Token> {
+    fn step(&mut self, lexer: &mut dyn MeLexer) -> Step<Token> {
         let token = self.step_internal(lexer)?;
 
         if let TokenValue::Ident(name) = &token.value {
@@ -967,7 +966,7 @@ impl MacroProcessor {
         Ok(token)
     }
 
-    fn step_no_continue(&mut self, lexer: &mut dyn MELexer) -> Step<Token> {
+    fn step_no_continue(&mut self, lexer: &mut dyn MeLexer) -> Step<Token> {
         loop {
             let step = self.step(lexer);
             if step != Continue.into() {

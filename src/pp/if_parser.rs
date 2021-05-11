@@ -1,6 +1,6 @@
 use crate::token::{Integer, PreprocessorError, Punct};
 
-use super::{Define, Location, MELexer, MacroProcessor, Step, StepExit, Token, TokenValue};
+use super::{Define, Location, MacroProcessor, MeLexer, Step, StepExit, Token, TokenValue};
 use std::{collections::HashMap, rc::Rc, vec};
 
 struct IfLexer<'macros> {
@@ -401,7 +401,7 @@ impl<'macros> IfParser<'macros> {
     }
 }
 
-impl<'macros> MELexer for IfLexer<'macros> {
+impl<'macros> MeLexer for IfLexer<'macros> {
     fn step(&mut self) -> Step<Token> {
         self.tokens.next().ok_or(StepExit::Finished)
     }
