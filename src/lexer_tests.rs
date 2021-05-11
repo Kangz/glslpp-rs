@@ -16,6 +16,14 @@ fn c(line: u32, pos: Range<u32>, c: char) -> Option<(char, Location)> {
     ))
 }
 
+fn l(line: u32, pos: Range<u32>) -> Location {
+    Location {
+        line,
+        start: pos.start,
+        end: pos.end,
+    }
+}
+
 fn unwrap_token(item: Option<LexerItem>) -> Token {
     item.unwrap().unwrap()
 }
@@ -244,14 +252,7 @@ fn lex_hash() {
     );
     let token = unwrap_token(it.next());
     assert_eq!(token.value, TokenValue::Hash);
-    assert_eq!(
-        token.location,
-        Location {
-            line: 1,
-            start: 1,
-            end: 2
-        }
-    );
+    assert_eq!(token.location, l(1, 1..2));
     assert_eq!(
         unwrap_token_value(it.next()),
         TokenValue::Ident("b".to_string())
@@ -266,14 +267,7 @@ fn lex_hash() {
     );
     let token = unwrap_token(it.next());
     assert_eq!(token.value, TokenValue::Hash);
-    assert_eq!(
-        token.location,
-        Location {
-            line: 2,
-            start: 6,
-            end: 7
-        }
-    );
+    assert_eq!(token.location, l(2, 6..7));
     expect_lexer_end(&mut it);
 }
 
@@ -285,11 +279,7 @@ fn lex_metadata() {
         unwrap_token(it.next()),
         Token {
             value: 1.into(),
-            location: Location {
-                line: 1,
-                start: 0,
-                end: 1
-            },
+            location: l(1, 0..1),
             leading_whitespace: true,
             start_of_line: true
         }
@@ -304,11 +294,7 @@ fn lex_metadata() {
         unwrap_token(it.next()),
         Token {
             value: 1.into(),
-            location: Location {
-                line: 1,
-                start: 1,
-                end: 2
-            },
+            location: l(1, 1..2),
             leading_whitespace: true,
             start_of_line: true
         }
@@ -319,11 +305,7 @@ fn lex_metadata() {
         unwrap_token(it.next()),
         Token {
             value: 2.into(),
-            location: Location {
-                line: 2,
-                start: 7,
-                end: 8
-            },
+            location: l(2, 7..8),
             leading_whitespace: true,
             start_of_line: false
         }
@@ -332,11 +314,7 @@ fn lex_metadata() {
         unwrap_token(it.next()),
         Token {
             value: 3.into(),
-            location: Location {
-                line: 2,
-                start: 9,
-                end: 10
-            },
+            location: l(2, 9..10),
             leading_whitespace: true,
             start_of_line: false
         }
@@ -346,11 +324,7 @@ fn lex_metadata() {
         unwrap_token(it.next()),
         Token {
             value: Punct::Plus.into(),
-            location: Location {
-                line: 2,
-                start: 10,
-                end: 11
-            },
+            location: l(2, 10..11),
             leading_whitespace: false,
             start_of_line: false
         }
@@ -360,11 +334,7 @@ fn lex_metadata() {
         unwrap_token(it.next()),
         Token {
             value: TokenValue::NewLine,
-            location: Location {
-                line: 2,
-                start: 11,
-                end: 12
-            },
+            location: l(2, 11..12),
             leading_whitespace: false,
             start_of_line: false
         }
@@ -374,11 +344,7 @@ fn lex_metadata() {
         unwrap_token(it.next()),
         Token {
             value: 4.into(),
-            location: Location {
-                line: 3,
-                start: 12,
-                end: 13
-            },
+            location: l(3, 12..13),
             leading_whitespace: true,
             start_of_line: true
         }
@@ -388,11 +354,7 @@ fn lex_metadata() {
         unwrap_token(it.next()),
         Token {
             value: TokenValue::NewLine,
-            location: Location {
-                line: 3,
-                start: 13,
-                end: 13
-            },
+            location: l(3, 13..13),
             leading_whitespace: false,
             start_of_line: false
         }
@@ -406,34 +368,13 @@ fn lex_identifiers() {
     let mut it = Lexer::new("foo BA_R baz0");
     let token = unwrap_token(it.next());
     assert_eq!(token.value, TokenValue::Ident("foo".to_string()));
-    assert_eq!(
-        token.location,
-        Location {
-            start: 0,
-            end: 3,
-            line: 1
-        }
-    );
+    assert_eq!(token.location, l(1, 0..3),);
     let token = unwrap_token(it.next());
     assert_eq!(token.value, TokenValue::Ident("BA_R".to_string()));
-    assert_eq!(
-        token.location,
-        Location {
-            start: 4,
-            end: 8,
-            line: 1
-        }
-    );
+    assert_eq!(token.location, l(1, 4..8),);
     let token = unwrap_token(it.next());
     assert_eq!(token.value, TokenValue::Ident("baz0".to_string()));
-    assert_eq!(
-        token.location,
-        Location {
-            start: 9,
-            end: 13,
-            line: 1
-        }
-    );
+    assert_eq!(token.location, l(1, 9..13),);
     expect_lexer_end(&mut it);
 
     // Test _ is a valid identifier
@@ -472,34 +413,13 @@ fn lex_decimal() {
     assert_eq!(unwrap_token_value(it.next()), 1.into());
     let token = unwrap_token(it.next());
     assert_eq!(token.value, 0u32.into());
-    assert_eq!(
-        token.location,
-        Location {
-            start: 2,
-            end: 4,
-            line: 1
-        }
-    );
+    assert_eq!(token.location, l(1, 2..4),);
     let token = unwrap_token(it.next());
     assert_eq!(token.value, 42.into());
-    assert_eq!(
-        token.location,
-        Location {
-            start: 5,
-            end: 7,
-            line: 1
-        }
-    );
+    assert_eq!(token.location, l(1, 5..7),);
     let token = unwrap_token(it.next());
     assert_eq!(token.value, 65536u32.into());
-    assert_eq!(
-        token.location,
-        Location {
-            start: 8,
-            end: 14,
-            line: 1
-        }
-    );
+    assert_eq!(token.location, l(1, 8..14),);
     expect_lexer_end(&mut it);
 
     // Test splitting with identifiers
@@ -582,24 +502,10 @@ fn lex_hexadecimal() {
     assert_eq!(unwrap_token_value(it.next()), 0u32.into());
     let token = unwrap_token(it.next());
     assert_eq!(token.value, 0xBAFFE.into());
-    assert_eq!(
-        token.location,
-        Location {
-            start: 9,
-            end: 16,
-            line: 1
-        }
-    );
+    assert_eq!(token.location, l(1, 9..16),);
     let token = unwrap_token(it.next());
     assert_eq!(token.value, 0xCAFEu32.into());
-    assert_eq!(
-        token.location,
-        Location {
-            start: 17,
-            end: 24,
-            line: 1
-        }
-    );
+    assert_eq!(token.location, l(1, 17..24),);
     expect_lexer_end(&mut it);
 
     // Test with redundant zeroes
@@ -766,24 +672,10 @@ fn lex_punctuation() {
     assert_eq!(unwrap_token_value(it.next()), Punct::Plus.into());
     let token = unwrap_token(it.next());
     assert_eq!(token.value, Punct::NotEqual.into());
-    assert_eq!(
-        token.location,
-        Location {
-            start: 2,
-            end: 4,
-            line: 1,
-        }
-    );
+    assert_eq!(token.location, l(1, 2..4),);
     let token = unwrap_token(it.next());
     assert_eq!(token.value, Punct::LeftShiftAssign.into());
-    assert_eq!(
-        token.location,
-        Location {
-            start: 5,
-            end: 8,
-            line: 1,
-        }
-    );
+    assert_eq!(token.location, l(1, 5..8),);
     expect_lexer_end(&mut it);
 
     // Test parsing a token that's a prefix of another one just before EOF
