@@ -316,10 +316,7 @@ impl<'a> Lexer<'a> {
                 Some(('x', _)) | Some(('X', _)) => {
                     self.inner.next();
 
-                    raw += &self.consume_chars(|c| match c {
-                        '0'..='9' | 'a'..='f' | 'A'..='F' => true,
-                        _ => false,
-                    });
+                    raw += &self.consume_chars(|c| matches!(c, '0'..='9' | 'a'..='f' | 'A'..='F'));
                     integer_radix = 16;
                 }
 
