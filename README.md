@@ -7,4 +7,6 @@
 [![codecov](https://codecov.io/gh/Kangz/glslpp-rs/branch/main/graph/badge.svg?token=CMM90W97YO)](https://codecov.io/gh/Kangz/glslpp-rs)
 
 
-A shader preprocessor and lexer in Rust. Note that this create is very work-in-progress: its interface will change and documentation is extremely lacking.
+A shader preprocessor and lexer in Rust.
+
+**WARNING**: this create is very work-in-progress: its interface will change and documentation is extremely lacking.
