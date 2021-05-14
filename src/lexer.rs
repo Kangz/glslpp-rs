@@ -330,7 +330,9 @@ impl<'a> Lexer<'a> {
             };
         }
 
-        if first_char != '.' {
+        if first_char == '.' {
+            is_float = true;
+        } else {
             // Parse any digits at the end of integers, or for the non-fractional part of floats.
             raw += &self.consume_chars(|c| ('0'..='9').contains(&c));
 
@@ -339,19 +341,43 @@ impl<'a> Lexer<'a> {
                 raw.push('.');
                 is_float = true;
             }
-        } else {
-            is_float = true;
         }
 
-        // At the point either we're an integer missing only suffixes, or we're a float with everything
-        // up to the . consumed.
-
+        // At this point either we're an integer missing only suffixes, or we're a float with
+        // everything up to the . consumed.
         if is_float {
             raw += &self.consume_chars(|c| ('0'..='9').contains(&c));
-            let width = self.parse_float_width_suffix()?;
+        }
 
+        // Handle scientific notation with a (e|E)(+|-|)\d+ suffix when we're a float or an
+        // an integer that could turn into a float if we add a exponent to it (so 0x1E-1
+        // isn't recognized as a float).
+        if (is_float || integer_radix == 8 || integer_radix == 10)
+            && matches!(self.inner.peek(), Some(('e', _)) | Some(('E', _)))
+        {
+            self.inner.next();
+            raw.push('e');
+            is_float = true;
+
+            match self.inner.peek() {
+                Some(('+', _)) => {
+                    self.inner.next();
+                    raw.push('+');
+                }
+                Some(('-', _)) => {
+                    self.inner.next();
+                    raw.push('-');
+                }
+                _ => {}
+            }
+
+            // TODO: what should we do when there is no number after the exponent?
+            raw += &self.consume_chars(|c| ('0'..='9').contains(&c));
+        }
+
+        if is_float {
             // TODO: Depending on the GLSL version make it an error to not have the suffix.
-            // TODO: Handle scientific notation.
+            let width = self.parse_float_width_suffix()?;
 
             Ok(TokenValue::Float(Float {
                 value: raw
