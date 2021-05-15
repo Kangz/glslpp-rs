@@ -604,6 +604,25 @@ fn lex_float() {
     assert_eq!(unwrap_token_value(it.next()), 1.0f32.into());
     assert_eq!(unwrap_token_value(it.next()), 0.2f32.into());
     expect_lexer_end(&mut it);
+
+    // Test parsing with exponents
+    //  - with / without float suffixes
+    //  - at different points in the float parsing.
+    let mut it = Lexer::new("3e10 4.1e-10f .01e12F");
+    assert_eq!(unwrap_token_value(it.next()), 3e10f32.into());
+    assert_eq!(unwrap_token_value(it.next()), 4.1e-10f32.into());
+    assert_eq!(unwrap_token_value(it.next()), 0.01e12f32.into());
+    expect_lexer_end(&mut it);
+
+    // Test parsing with exponents
+    //  - After values looking like octal integer (works)
+    //  - After values looking like hexadecimal integer (doesn't work)
+    let mut it = Lexer::new("05e2 0x1e-2");
+    assert_eq!(unwrap_token_value(it.next()), 5e2f32.into());
+
+    assert_eq!(unwrap_token_value(it.next()), 0x1Ei32.into());
+    assert_eq!(unwrap_token_value(it.next()), Punct::Minus.into());
+    assert_eq!(unwrap_token_value(it.next()), 2i32.into());
 }
 
 #[test]
