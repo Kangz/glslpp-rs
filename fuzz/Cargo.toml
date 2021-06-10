@@ -1,0 +1,9 @@
+[package]
+name = "fuzz"
+version = "0.1.0"
+authors = ["João Capucho <jcapucho7@gmail.com>"]
+edition = "2018"
+
+[dependencies]
+afl = "*"
+pp-rs = { path = ".." }
