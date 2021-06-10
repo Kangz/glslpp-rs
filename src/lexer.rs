@@ -115,7 +115,7 @@ impl<'a> Iterator for SkipBackslashNewline<'a> {
 //      include both the start and end marker.
 #[derive(Clone)]
 pub struct ReplaceComments<'a> {
-    inner: SkipBackslashNewline<'a>,
+    inner: Peekable<SkipBackslashNewline<'a>>,
 }
 
 // The lexer wants to know when whitespace is a comment to know if a comment was ever processed.
@@ -126,7 +126,7 @@ pub const COMMENT_SENTINEL_VALUE: char = '\r';
 impl<'a> ReplaceComments<'a> {
     pub fn new(input: &'a str) -> Self {
         ReplaceComments {
-            inner: SkipBackslashNewline::new(input),
+            inner: SkipBackslashNewline::new(input).peekable(),
         }
     }
 }
@@ -142,28 +142,24 @@ impl<'a> Iterator for ReplaceComments<'a> {
             return Some(current);
         }
 
-        let mut save_point = self.inner.clone();
-        match self.next() {
-            // The // case, consume until but not including the next \n
+        match self.inner.peek() {
             Some(('/', _)) => {
                 current.1.end += 1;
+                self.inner.next();
 
-                save_point = self.inner.clone();
-                while let Some((next, loc)) = self.inner.next() {
+                while let Some(&(next, loc)) = self.inner.peek() {
                     if next == '\n' {
                         current.1.end = loc.start;
                         break;
                     }
                     current.1.end = loc.end;
-                    save_point = self.inner.clone()
+                    self.inner.next();
                 }
-                self.inner = save_point;
 
                 Some((COMMENT_SENTINEL_VALUE, current.1))
             }
-
-            // The /* case, consume until the next */
             Some(('*', _)) => {
+                self.inner.next();
                 current.1.end += 1;
 
                 let mut was_star = false;
@@ -177,12 +173,7 @@ impl<'a> Iterator for ReplaceComments<'a> {
 
                 Some((COMMENT_SENTINEL_VALUE, current.1))
             }
-
-            // Not // or /*, do nothing
-            _ => {
-                self.inner = save_point;
-                Some(current)
-            }
+            _ => Some(current),
         }
     }
 }
