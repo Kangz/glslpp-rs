@@ -1357,4 +1357,14 @@ fn add_define() {
         pp.add_define("A", "@").unwrap_err().0,
         PreprocessorError::UnexpectedCharacter
     );
+
+    // Test some crashes detected by fuzzing
+    let mut pp = Preprocessor::new("#ifG/fp");
+    while let Some(_) = pp.next() {}
+
+    let mut pp = Preprocessor::new("\n#if~O%t");
+    while let Some(_) = pp.next() {}
+
+    let mut pp = Preprocessor::new("#if~f>>~f");
+    while let Some(_) = pp.next() {}
 }
