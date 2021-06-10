@@ -1,7 +1,7 @@
 use crate::token::{Integer, PreprocessorError, Punct};
 
 use super::{Define, Location, MacroProcessor, MeLexer, Step, StepExit, Token, TokenValue};
-use std::{collections::HashMap, rc::Rc, vec};
+use std::{collections::HashMap, convert::TryInto, rc::Rc, vec};
 
 struct IfLexer<'macros> {
     tokens: vec::IntoIter<Token>,
@@ -221,9 +221,24 @@ impl<'macros> IfParser<'macros> {
                 let right = self.parse_unary()?;
 
                 match punct {
-                    Punct::Star => left *= right,
-                    Punct::Slash => left /= right,
-                    Punct::Percent => left %= right,
+                    Punct::Star => {
+                        left = left.checked_mul(right).ok_or(StepExit::Error((
+                            PreprocessorError::IntegerOverflow,
+                            self.location,
+                        )))?
+                    }
+                    Punct::Slash => {
+                        left = left.checked_div(right).ok_or(StepExit::Error((
+                            PreprocessorError::DivisionByZero,
+                            self.location,
+                        )))?
+                    }
+                    Punct::Percent => {
+                        left = left.checked_rem(right).ok_or(StepExit::Error((
+                            PreprocessorError::DivisionByZero,
+                            self.location,
+                        )))?
+                    }
                     _ => unreachable!(),
                 }
             } else {
@@ -244,8 +259,18 @@ impl<'macros> IfParser<'macros> {
                 let right = self.parse_multiplicative()?;
 
                 match punct {
-                    Punct::Plus => left += right,
-                    Punct::Minus => left -= right,
+                    Punct::Plus => {
+                        left = left.checked_add(right).ok_or(StepExit::Error((
+                            PreprocessorError::IntegerOverflow,
+                            self.location,
+                        )))?
+                    }
+                    Punct::Minus => {
+                        left = left.checked_sub(right).ok_or(StepExit::Error((
+                            PreprocessorError::IntegerOverflow,
+                            self.location,
+                        )))?
+                    }
                     _ => unreachable!(),
                 }
             } else {
@@ -266,8 +291,24 @@ impl<'macros> IfParser<'macros> {
                 let right = self.parse_additive()?;
 
                 match punct {
-                    Punct::LeftShift => left <<= right,
-                    Punct::RightShift => left >>= right,
+                    Punct::LeftShift => {
+                        let right = right.try_into().map_err(|_| {
+                            StepExit::Error((PreprocessorError::IntegerOverflow, self.location))
+                        })?;
+                        left = left.checked_shl(right).ok_or(StepExit::Error((
+                            PreprocessorError::IntegerOverflow,
+                            self.location,
+                        )))?
+                    }
+                    Punct::RightShift => {
+                        let right = right.try_into().map_err(|_| {
+                            StepExit::Error((PreprocessorError::IntegerOverflow, self.location))
+                        })?;
+                        left = left.checked_shr(right).ok_or(StepExit::Error((
+                            PreprocessorError::IntegerOverflow,
+                            self.location,
+                        )))?
+                    }
                     _ => unreachable!(),
                 }
             } else {
