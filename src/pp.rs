@@ -105,6 +105,8 @@ pub fn convert_lexer_token(token: LexerToken) -> Result<Token, (PreprocessorErro
         }),
 
         LexerTokenValue::Hash => Err((PreprocessorError::UnexpectedHash, location)),
+        // In all the places that call convert_lexer_token, newlines are handled specially as they
+        // are either noops, or act as a separator.
         LexerTokenValue::NewLine => unreachable!(),
     }
 }
@@ -777,8 +779,8 @@ impl MacroProcessor {
 
         loop {
             // Get the next token (without additional expansion)
-            let token = match self.step_no_continue(lexer) {
-                Err(StepExit::Continue) => unreachable!(),
+            let token = match self.step(lexer) {
+                Err(StepExit::Continue) => continue,
                 Err(StepExit::Finished) => {
                     return Err(StepExit::Error((
                         PreprocessorError::UnexpectedEndOfInput,
