@@ -385,7 +385,7 @@ impl<'macros> IfParser<'macros> {
     fn parse_logical_or(&mut self) -> Step<i64> {
         let mut left = self.parse_logical_and()?;
 
-        while let Some(TokenValue::Punct(Punct::LogicalAnd)) = self.peek()?.map(|t| t.value) {
+        while let Some(TokenValue::Punct(Punct::LogicalOr)) = self.peek()?.map(|t| t.value) {
             self.next()?;
 
             let right = self.parse_logical_and()?;
