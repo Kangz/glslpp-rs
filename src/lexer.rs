@@ -340,7 +340,7 @@ impl<'a> Lexer<'a> {
         }
     }
 
-    fn next_char_if(&mut self, predicate: impl Fn(char) -> bool) -> Option<char> {
+    fn next_char_if(&mut self, predicate: impl FnOnce(char) -> bool) -> Option<char> {
         if let Some(c) = self.inner.peek_char() {
             if predicate(c) {
                 return Some(self.inner.next_char()?);
