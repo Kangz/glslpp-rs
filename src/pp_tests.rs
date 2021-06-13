@@ -1,6 +1,6 @@
 use super::lexer::{self, Token as LexerToken, TokenValue as LexerTokenValue};
 use super::pp::{convert_lexer_token, Preprocessor, PreprocessorItem};
-use super::token::{Integer, Location, PreprocessorError, Punct, Token, TokenValue};
+use super::token::{Float, Integer, Location, PreprocessorError, Punct, Token, TokenValue};
 
 struct NoopPreprocessor<'a> {
     lexer: lexer::Lexer<'a>,
@@ -92,6 +92,13 @@ fn parse_define() {
         "#define [",
         PreprocessorError::UnexpectedToken(TokenValue::Punct(Punct::LeftBracket)),
     );
+    check_preprocessing_error(
+        "#define 1.0",
+        PreprocessorError::UnexpectedToken(TokenValue::Float(Float {
+            value: 1.0,
+            width: 32,
+        })),
+    );
 
     // Test that there must be a name before the new line
     check_preprocessing_error(
@@ -99,6 +106,9 @@ fn parse_define() {
         A",
         PreprocessorError::UnexpectedNewLine,
     );
+
+    // Test putting a garbage character for the define name
+    check_preprocessing_error("#@", PreprocessorError::UnexpectedCharacter);
 }
 
 #[test]
@@ -394,6 +404,16 @@ fn function_like_define() {
          B(2 COMMA 3)",
         PreprocessorError::TooManyDefineArguments,
     );
+
+    // Test putting comments inside the arguments to a function-like macro
+    check_preprocessed_result(
+        "#define A(x, y) x + y
+         A(/*this is a 2*/ 2,
+           // And below is a 3!
+           3
+        )",
+        "2 + 3",
+    );
 }
 
 #[test]
@@ -563,6 +583,7 @@ fn parse_if() {
         "2",
     );
 
+    // TODO test that the if_parse gives back the unused tokens
     // TODO test expressions?
 }
 
@@ -1007,6 +1028,19 @@ fn parse_line() {
         __LINE__",
         "1u",
     );
+
+    // Test passing both a line and file id is allowed.
+    check_preprocessed_result("#line 0 1", "");
+
+    // Test passing more numbers is invalid.
+    check_preprocessing_error(
+        "#line 0 1 2",
+        PreprocessorError::UnexpectedToken(TokenValue::Integer(Integer {
+            value: 2,
+            signed: true,
+            width: 32,
+        })),
+    );
 }
 
 #[test]
@@ -1087,6 +1121,15 @@ fn line_define() {
          __LINE__",
         PreprocessorError::LineOverflow,
     );
+
+    // Check that line directives don't allow floats
+    check_preprocessing_error(
+        "#line 1.0",
+        PreprocessorError::UnexpectedToken(TokenValue::Float(Float {
+            value: 1.0,
+            width: 32,
+        })),
+    )
 }
 
 #[test]
