@@ -1,5 +1,3 @@
-use std::ops::Range;
-
 //TODO: Source file
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub struct Location {
@@ -19,18 +17,6 @@ impl Default for Location {
             end: 0,
             line: 1,
         }
-    }
-}
-
-impl From<Location> for Range<u32> {
-    fn from(loc: Location) -> Range<u32> {
-        loc.start..loc.end
-    }
-}
-
-impl From<Location> for Range<usize> {
-    fn from(loc: Location) -> Range<usize> {
-        loc.start as usize..loc.end as usize
     }
 }
 
