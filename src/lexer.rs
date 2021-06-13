@@ -461,13 +461,13 @@ impl<'a> Lexer<'a> {
             ('[', _, _) => Some((Punct::LeftBracket, 1)),
             (']', _, _) => Some((Punct::RightBracket, 1)),
 
-            ('.', _, _) => Some((Punct::Dot, 1)),
             (',', _, _) => Some((Punct::Comma, 1)),
             (';', _, _) => Some((Punct::Semicolon, 1)),
             (':', _, _) => Some((Punct::Colon, 1)),
             ('~', _, _) => Some((Punct::Tilde, 1)),
             ('?', _, _) => Some((Punct::Question, 1)),
-
+            // Note that Dot (".") is handled in Lexer::next since it can be
+            // either punctuation or the start of a floating point number.
             _ => None,
         };
 
