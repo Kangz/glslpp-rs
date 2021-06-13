@@ -12,16 +12,22 @@ jobs:
           profile: minimal
           toolchain: stable
           override: true
-      - run: |
-          rustup component add clippy
-          cargo clippy --version
+          components: clippy, rustfmt
+      - run: cargo fmt --version
       - uses: actions-rs/cargo@v1
+        name: Format
+        with:
+          command: fmt
+          args: --all -- --check
+      - run: cargo clippy --version
+      - uses: actions-rs/cargo@v1
+        name: Clippy
         with:
           command: clippy
           args: -- -D warnings
 
   build:
-    name: Build
+    name: Build and test
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v2
@@ -31,14 +37,14 @@ jobs:
           toolchain: stable
           override: true
       - uses: actions-rs/cargo@v1
-        name: Build
+        name: Test (and build debug)
+        with:
+          command: test
+      - uses: actions-rs/cargo@v1
+        name: Build release
         with:
           command: build
           args: --release
-      - uses: actions-rs/cargo@v1
-        name: Test
-        with:
-          command: test
       - name: Publish to crates.io
         if: ${{ startsWith(github.ref, 'refs/tags') }}
         uses: actions-rs/cargo@v1
