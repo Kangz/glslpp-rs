@@ -31,7 +31,7 @@ impl<'a> CharsAndLine<'a> {
     }
 
     pub fn get_current_ptr(&self) -> *const u8 {
-        self.inner.as_str().as_bytes().as_ptr()
+        self.inner.as_str().as_ptr()
     }
 }
 
@@ -305,12 +305,8 @@ impl<'a> Lexer<'a> {
     fn parse_identifier(&mut self) -> Result<TokenValue, PreprocessorError> {
         let mut identifier = String::default();
 
-        if self
-            .inner
-            .peek_char()
-            .map_or(false, |c| c.is_xid_start() || c == '_')
-        {
-            identifier.push(self.inner.next_char().unwrap());
+        if let Some(c) = self.next_char_if(|c| c.is_xid_start() || c == '_') {
+            identifier.push(c);
         }
 
         let rest = self.consume_chars(|c| c.is_xid_continue());
@@ -321,13 +317,7 @@ impl<'a> Lexer<'a> {
     }
 
     fn parse_integer_signedness_suffix(&mut self) -> bool {
-        match self.inner.peek_char() {
-            Some('u') | Some('U') => {
-                self.inner.next_char();
-                false
-            }
-            _ => true,
-        }
+        !self.next_char_if(|c| c == 'u' || c == 'U').is_some()
     }
 
     fn parse_integer_width_suffix(&mut self) -> Result<i32, PreprocessorError> {
@@ -350,18 +340,20 @@ impl<'a> Lexer<'a> {
         }
     }
 
-    fn consume_chars(&mut self, filter: impl Fn(char) -> bool) -> String {
-        let mut result: String = Default::default();
-
-        while let Some(current) = self.inner.peek_char() {
-            if filter(current) {
-                self.inner.next_char();
-                result.push(current);
-            } else {
-                break;
+    fn next_char_if(&mut self, predicate: impl Fn(char) -> bool) -> Option<char> {
+        if let Some(c) = self.inner.peek_char() {
+            if predicate(c) {
+                return Some(self.inner.next_char()?);
             }
         }
+        None
+    }
 
+    fn consume_chars(&mut self, filter: impl Fn(char) -> bool) -> String {
+        let mut result: String = Default::default();
+        while let Some(c) = self.next_char_if(&filter) {
+            result.push(c);
+        }
         result
     }
 
@@ -397,8 +389,7 @@ impl<'a> Lexer<'a> {
             // Parse any digits at the end of integers, or for the non-fractional part of floats.
             raw += &self.consume_chars(|c| ('0'..='9').contains(&c));
 
-            if let Some('.') = self.inner.peek_char() {
-                self.inner.next_char();
+            if self.next_char_if(|c| c == '.').is_some() {
                 raw.push('.');
                 is_float = true;
             }
@@ -414,9 +405,8 @@ impl<'a> Lexer<'a> {
         // an integer that could turn into a float if we add a exponent to it (so 0x1E-1
         // isn't recognized as a float).
         if (is_float || integer_radix == 8 || integer_radix == 10)
-            && matches!(self.inner.peek_char(), Some('e') | Some('E'))
+            && self.next_char_if(|c| c == 'e' || c == 'E').is_some()
         {
-            self.inner.next_char();
             raw.push('e');
             is_float = true;
 
