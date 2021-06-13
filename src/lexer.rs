@@ -317,7 +317,7 @@ impl<'a> Lexer<'a> {
     }
 
     fn parse_integer_signedness_suffix(&mut self) -> bool {
-        !self.next_char_if(|c| c == 'u' || c == 'U').is_some()
+        self.next_char_if(|c| c == 'u' || c == 'U').is_none()
     }
 
     fn parse_integer_width_suffix(&mut self) -> Result<i32, PreprocessorError> {
@@ -343,7 +343,7 @@ impl<'a> Lexer<'a> {
     fn next_char_if(&mut self, predicate: impl FnOnce(char) -> bool) -> Option<char> {
         if let Some(c) = self.inner.peek_char() {
             if predicate(c) {
-                return Some(self.inner.next_char()?);
+                return self.inner.next_char();
             }
         }
         None
