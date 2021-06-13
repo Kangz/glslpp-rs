@@ -648,10 +648,11 @@ fn lex_float() {
     // Test parsing with exponents
     //  - with / without float suffixes
     //  - at different points in the float parsing.
-    let mut it = Lexer::new("3e10 4.1e-10f .01e12F");
+    let mut it = Lexer::new("3e10 4.1e-10f .01e12F 4.1e+10f");
     assert_eq!(unwrap_token_value(it.next()), 3e10f32.into());
     assert_eq!(unwrap_token_value(it.next()), 4.1e-10f32.into());
     assert_eq!(unwrap_token_value(it.next()), 0.01e12f32.into());
+    assert_eq!(unwrap_token_value(it.next()), 4.1e+10f32.into());
     expect_lexer_end(&mut it);
 
     // Test parsing with exponents
@@ -663,6 +664,37 @@ fn lex_float() {
     assert_eq!(unwrap_token_value(it.next()), 0x1Ei32.into());
     assert_eq!(unwrap_token_value(it.next()), Punct::Minus.into());
     assert_eq!(unwrap_token_value(it.next()), 2i32.into());
+
+    // Test parsing with nothing valid after the 'e' (technically it shouldn't
+    // be an error, but there's no language where that sequence of token is
+    // valid.
+    let mut it = Lexer::new("1.0e");
+    assert_eq!(
+        unwrap_error(it.next()),
+        PreprocessorError::FloatParsingError
+    );
+
+    // Check that 16bit and 64bit suffixes produce errors
+    let mut it = Lexer::new("1.0l");
+    assert_eq!(
+        unwrap_error(it.next()),
+        PreprocessorError::NotSupported64BitLiteral
+    );
+    let mut it = Lexer::new("1.0L");
+    assert_eq!(
+        unwrap_error(it.next()),
+        PreprocessorError::NotSupported64BitLiteral
+    );
+    let mut it = Lexer::new("1.0h");
+    assert_eq!(
+        unwrap_error(it.next()),
+        PreprocessorError::NotSupported16BitLiteral
+    );
+    let mut it = Lexer::new("1.0H");
+    assert_eq!(
+        unwrap_error(it.next()),
+        PreprocessorError::NotSupported16BitLiteral
+    );
 }
 
 #[test]
@@ -729,6 +761,24 @@ fn lex_punctuation() {
         unwrap_error(it.next()),
         PreprocessorError::UnexpectedCharacter
     );
+
+    // Extra punctuation tests for code coverage.
+    let mut it = Lexer::new("<= >= += -= &= || |= | ^= { } ] ? .");
+    assert_eq!(unwrap_token_value(it.next()), Punct::LessEqual.into());
+    assert_eq!(unwrap_token_value(it.next()), Punct::GreaterEqual.into());
+    assert_eq!(unwrap_token_value(it.next()), Punct::AddAssign.into());
+    assert_eq!(unwrap_token_value(it.next()), Punct::SubAssign.into());
+    assert_eq!(unwrap_token_value(it.next()), Punct::AndAssign.into());
+    assert_eq!(unwrap_token_value(it.next()), Punct::LogicalOr.into());
+    assert_eq!(unwrap_token_value(it.next()), Punct::OrAssign.into());
+    assert_eq!(unwrap_token_value(it.next()), Punct::Pipe.into());
+    assert_eq!(unwrap_token_value(it.next()), Punct::XorAssign.into());
+    assert_eq!(unwrap_token_value(it.next()), Punct::LeftBrace.into());
+    assert_eq!(unwrap_token_value(it.next()), Punct::RightBrace.into());
+    assert_eq!(unwrap_token_value(it.next()), Punct::RightBracket.into());
+    assert_eq!(unwrap_token_value(it.next()), Punct::Question.into());
+    assert_eq!(unwrap_token_value(it.next()), Punct::Dot.into());
+    expect_lexer_end(&mut it);
 }
 
 #[test]
