@@ -1,19 +1,12 @@
 use super::lexer::{
-    CharsAndLocation, Lexer, LexerItem, ReplaceComments, SkipBackslashNewline, Token, TokenValue,
+    CharsAndLine, Lexer, LexerItem, ReplaceComments, SkipBackslashNewline, Token, TokenValue,
     COMMENT_SENTINEL_VALUE,
 };
 use super::token::{Float, Integer, Location, PreprocessorError, Punct};
 use std::ops::Range;
 
-fn c(line: u32, pos: Range<u32>, c: char) -> Option<(char, Location)> {
-    Some((
-        c,
-        Location {
-            line,
-            start: pos.start,
-            end: pos.end,
-        },
-    ))
+fn c(c: char, line: u32) -> Option<(char, u32)> {
+    Some((c, line))
 }
 
 fn l(line: u32, pos: Range<u32>) -> Location {
@@ -70,55 +63,55 @@ impl From<f32> for TokenValue {
 #[test]
 fn chars_and_location() {
     // Test handling of characters in a line.
-    let mut it = CharsAndLocation::new("abc");
-    assert_eq!(it.next(), c(1, 0..1, 'a'));
-    assert_eq!(it.next(), c(1, 1..2, 'b'));
-    assert_eq!(it.next(), c(1, 2..3, 'c'));
+    let mut it = CharsAndLine::new("abc");
+    assert_eq!(it.next(), c('a', 1));
+    assert_eq!(it.next(), c('b', 1));
+    assert_eq!(it.next(), c('c', 1));
     assert_eq!(it.next(), None);
 
     // Test handling of \n in the regular case.
-    let mut it = CharsAndLocation::new("a\nb");
-    assert_eq!(it.next(), c(1, 0..1, 'a'));
-    assert_eq!(it.next(), c(1, 1..2, '\n'));
-    assert_eq!(it.next(), c(2, 2..3, 'b'));
+    let mut it = CharsAndLine::new("a\nb");
+    assert_eq!(it.next(), c('a', 1));
+    assert_eq!(it.next(), c('\n', 1));
+    assert_eq!(it.next(), c('b', 2));
     assert_eq!(it.next(), None);
 
     // Test handling of \r in the regular case.
-    let mut it = CharsAndLocation::new("a\rb");
-    assert_eq!(it.next(), c(1, 0..1, 'a'));
-    assert_eq!(it.next(), c(1, 1..2, '\n'));
-    assert_eq!(it.next(), c(2, 2..3, 'b'));
+    let mut it = CharsAndLine::new("a\rb");
+    assert_eq!(it.next(), c('a', 1));
+    assert_eq!(it.next(), c('\n', 1));
+    assert_eq!(it.next(), c('b', 2));
     assert_eq!(it.next(), None);
 
     // Test handling of \n\r.
-    let mut it = CharsAndLocation::new("a\n\rb");
-    assert_eq!(it.next(), c(1, 0..1, 'a'));
-    assert_eq!(it.next(), c(1, 1..3, '\n'));
-    assert_eq!(it.next(), c(2, 3..4, 'b'));
+    let mut it = CharsAndLine::new("a\n\rb");
+    assert_eq!(it.next(), c('a', 1));
+    assert_eq!(it.next(), c('\n', 1));
+    assert_eq!(it.next(), c('b', 2));
     assert_eq!(it.next(), None);
 
     // Test handling of \r\n.
-    let mut it = CharsAndLocation::new("a\r\nb");
-    assert_eq!(it.next(), c(1, 0..1, 'a'));
-    assert_eq!(it.next(), c(1, 1..3, '\n'));
-    assert_eq!(it.next(), c(2, 3..4, 'b'));
+    let mut it = CharsAndLine::new("a\r\nb");
+    assert_eq!(it.next(), c('a', 1));
+    assert_eq!(it.next(), c('\n', 1));
+    assert_eq!(it.next(), c('b', 2));
     assert_eq!(it.next(), None);
 
     // Test handling of a mix of \r and \n
-    let mut it = CharsAndLocation::new("\n\r\n\r\r\r\n");
-    assert_eq!(it.next(), c(1, 0..2, '\n'));
-    assert_eq!(it.next(), c(2, 2..4, '\n'));
-    assert_eq!(it.next(), c(3, 4..5, '\n'));
-    assert_eq!(it.next(), c(4, 5..7, '\n'));
+    let mut it = CharsAndLine::new("\n\r\n\r\r\r\n");
+    assert_eq!(it.next(), c('\n', 1));
+    assert_eq!(it.next(), c('\n', 2));
+    assert_eq!(it.next(), c('\n', 3));
+    assert_eq!(it.next(), c('\n', 4));
     assert_eq!(it.next(), None);
 
     // Unicode handling
-    let mut it = CharsAndLocation::new("a→üs🦀");
-    assert_eq!(it.next(), c(1, 0..1, 'a'));
-    assert_eq!(it.next(), c(1, 1..4, '→'));
-    assert_eq!(it.next(), c(1, 4..6, 'ü'));
-    assert_eq!(it.next(), c(1, 6..7, 's'));
-    assert_eq!(it.next(), c(1, 7..11, '🦀'));
+    let mut it = CharsAndLine::new("a→üs🦀");
+    assert_eq!(it.next(), c('a', 1));
+    assert_eq!(it.next(), c('→', 1));
+    assert_eq!(it.next(), c('ü', 1));
+    assert_eq!(it.next(), c('s', 1));
+    assert_eq!(it.next(), c('🦀', 1));
     assert_eq!(it.next(), None);
 }
 
@@ -126,21 +119,21 @@ fn chars_and_location() {
 fn skip_backslash_newline() {
     // Test a simple case.
     let mut it = SkipBackslashNewline::new("a\\\nb");
-    assert_eq!(it.next(), c(1, 0..1, 'a'));
-    assert_eq!(it.next(), c(2, 3..4, 'b'));
+    assert_eq!(it.next(), c('a', 1));
+    assert_eq!(it.next(), c('b', 2));
     assert_eq!(it.next(), None);
 
     // Test a double case that requires the loop in the algorithm.
     let mut it = SkipBackslashNewline::new("a\\\n\\\nb");
-    assert_eq!(it.next(), c(1, 0..1, 'a'));
-    assert_eq!(it.next(), c(3, 5..6, 'b'));
+    assert_eq!(it.next(), c('a', 1));
+    assert_eq!(it.next(), c('b', 3));
     assert_eq!(it.next(), None);
 
     // Test a backslash on its own
     let mut it = SkipBackslashNewline::new("a\\b");
-    assert_eq!(it.next(), c(1, 0..1, 'a'));
-    assert_eq!(it.next(), c(1, 1..2, '\\'));
-    assert_eq!(it.next(), c(1, 2..3, 'b'));
+    assert_eq!(it.next(), c('a', 1));
+    assert_eq!(it.next(), c('\\', 1));
+    assert_eq!(it.next(), c('b', 1));
     assert_eq!(it.next(), None);
 
     // Test a case just before EOF
@@ -152,63 +145,63 @@ fn skip_backslash_newline() {
 fn replace_comments() {
     // Test a slash that's not a comment
     let mut it = ReplaceComments::new("a/b");
-    assert_eq!(it.next(), c(1, 0..1, 'a'));
-    assert_eq!(it.next(), c(1, 1..2, '/'));
-    assert_eq!(it.next(), c(1, 2..3, 'b'));
+    assert_eq!(it.next(), c('a', 1));
+    assert_eq!(it.next(), c('/', 1));
+    assert_eq!(it.next(), c('b', 1));
     assert_eq!(it.next(), None);
 
     // Test a slash with nothing afterwards
     let mut it = ReplaceComments::new("a/");
-    assert_eq!(it.next(), c(1, 0..1, 'a'));
-    assert_eq!(it.next(), c(1, 1..2, '/'));
+    assert_eq!(it.next(), c('a', 1));
+    assert_eq!(it.next(), c('/', 1));
     assert_eq!(it.next(), None);
 
     // Test a single-line comment
     let mut it = ReplaceComments::new("a//foo\nb");
-    assert_eq!(it.next(), c(1, 0..1, 'a'));
-    assert_eq!(it.next(), c(1, 1..6, COMMENT_SENTINEL_VALUE));
-    assert_eq!(it.next(), c(1, 6..7, '\n'));
-    assert_eq!(it.next(), c(2, 7..8, 'b'));
+    assert_eq!(it.next(), c('a', 1));
+    assert_eq!(it.next(), c(COMMENT_SENTINEL_VALUE, 1));
+    assert_eq!(it.next(), c('\n', 1));
+    assert_eq!(it.next(), c('b', 2));
     assert_eq!(it.next(), None);
 
     // Test a single-line comment without an ending newline
     let mut it = ReplaceComments::new("//foo");
-    assert_eq!(it.next(), c(1, 0..5, COMMENT_SENTINEL_VALUE));
+    assert_eq!(it.next(), c(COMMENT_SENTINEL_VALUE, 1));
     assert_eq!(it.next(), None);
 
     // Test a single-line comment without nothing afterwards
     let mut it = ReplaceComments::new("//");
-    assert_eq!(it.next(), c(1, 0..2, COMMENT_SENTINEL_VALUE));
+    assert_eq!(it.next(), c(COMMENT_SENTINEL_VALUE, 1));
     assert_eq!(it.next(), None);
 
     // Test a single-line comment with a line continuation
     let mut it = ReplaceComments::new("//foo\\\na");
-    assert_eq!(it.next(), c(1, 0..8, COMMENT_SENTINEL_VALUE));
+    assert_eq!(it.next(), c(COMMENT_SENTINEL_VALUE, 1));
     assert_eq!(it.next(), None);
 
     // Test a multi-line comment
     let mut it = ReplaceComments::new("a/*fo\n\no*/b");
-    assert_eq!(it.next(), c(1, 0..1, 'a'));
-    assert_eq!(it.next(), c(1, 1..10, COMMENT_SENTINEL_VALUE));
-    assert_eq!(it.next(), c(3, 10..11, 'b'));
+    assert_eq!(it.next(), c('a', 1));
+    assert_eq!(it.next(), c(COMMENT_SENTINEL_VALUE, 1));
+    assert_eq!(it.next(), c('b', 3));
     assert_eq!(it.next(), None);
 
     // Test a multi-line comment, without a proper ending (only the *)
     let mut it = ReplaceComments::new("a/*fo\n\no*");
-    assert_eq!(it.next(), c(1, 0..1, 'a'));
-    assert_eq!(it.next(), c(1, 1..9, COMMENT_SENTINEL_VALUE));
+    assert_eq!(it.next(), c('a', 1));
+    assert_eq!(it.next(), c(COMMENT_SENTINEL_VALUE, 1));
     assert_eq!(it.next(), None);
 
     // Test a multi-line comment, without a proper ending (nothing)
     let mut it = ReplaceComments::new("a/*fo\n\no");
-    assert_eq!(it.next(), c(1, 0..1, 'a'));
-    assert_eq!(it.next(), c(1, 1..8, COMMENT_SENTINEL_VALUE));
+    assert_eq!(it.next(), c('a', 1));
+    assert_eq!(it.next(), c(COMMENT_SENTINEL_VALUE, 1));
     assert_eq!(it.next(), None);
 
     // Test a multi-line comment, or /*/ not being a complete one
     let mut it = ReplaceComments::new("a/*/b");
-    assert_eq!(it.next(), c(1, 0..1, 'a'));
-    assert_eq!(it.next(), c(1, 1..5, COMMENT_SENTINEL_VALUE));
+    assert_eq!(it.next(), c('a', 1));
+    assert_eq!(it.next(), c(COMMENT_SENTINEL_VALUE, 1));
     assert_eq!(it.next(), None);
 }
 
