@@ -169,7 +169,7 @@ impl<'a> Iterator for ReplaceComments<'a> {
             // The /*, consume until the next */
             Some(('*', _)) => {
                 let mut was_star = false;
-                while let Some((next, _)) = peek_inner.next() {
+                for (next, _) in peek_inner.by_ref() {
                     if was_star && next == '/' {
                         break;
                     }
