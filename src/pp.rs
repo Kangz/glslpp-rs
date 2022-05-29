@@ -360,7 +360,7 @@ impl<'a> DirectiveProcessor<'a> {
         let line = self.gather_until_newline()?;
 
         let mut parser = if_parser::IfParser::new(line, &self.defines, directive_location, false);
-        let line = dbg!(parser.evaluate_expression())?;
+        let line = parser.evaluate_expression()?;
 
         // Validates that the line is between 0 and 2^31 as per the C standard.
         if line as u64 >= (1 << 32) {
@@ -954,7 +954,7 @@ impl MacroProcessor {
 
                 return Ok(Token {
                     value: TokenValue::Integer(
-                        (lexer.apply_line_offset(line, token.location)? as u64).to_string(),
+                        lexer.apply_line_offset(line, token.location)?.to_string(),
                     ),
                     location: token.location,
                 });
