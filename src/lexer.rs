@@ -1,4 +1,4 @@
-use crate::token::{Float, Integer, Location, PreprocessorError, Punct};
+use crate::token::{Location, PreprocessorError, Punct};
 use std::str::Chars;
 use unicode_xid::UnicodeXID;
 
@@ -258,8 +258,8 @@ pub enum TokenValue {
 
     // Regular token values
     Ident(String),
-    Integer(Integer),
-    Float(Float),
+    Integer(String),
+    Float(String),
     Punct(Punct),
 }
 
@@ -316,30 +316,6 @@ impl<'a> Lexer<'a> {
         Ok(TokenValue::Ident(identifier))
     }
 
-    fn parse_integer_signedness_suffix(&mut self) -> bool {
-        self.next_char_if(|c| c == 'u' || c == 'U').is_none()
-    }
-
-    fn parse_integer_width_suffix(&mut self) -> Result<i32, PreprocessorError> {
-        match self.inner.peek_char() {
-            Some('l') | Some('L') => Err(PreprocessorError::NotSupported64BitLiteral),
-            Some('s') | Some('S') => Err(PreprocessorError::NotSupported16BitLiteral),
-            _ => Ok(32),
-        }
-    }
-
-    fn parse_float_width_suffix(&mut self) -> Result<i32, PreprocessorError> {
-        match self.inner.peek_char() {
-            Some('l') | Some('L') => Err(PreprocessorError::NotSupported64BitLiteral),
-            Some('h') | Some('H') => Err(PreprocessorError::NotSupported16BitLiteral),
-            Some('f') | Some('F') => {
-                self.inner.next_char();
-                Ok(32)
-            }
-            _ => Ok(32),
-        }
-    }
-
     fn next_char_if(&mut self, predicate: impl FnOnce(char) -> bool) -> Option<char> {
         if let Some(c) = self.inner.peek_char() {
             if predicate(c) {
@@ -366,7 +342,8 @@ impl<'a> Lexer<'a> {
         // Handle hexadecimal numbers that needs to consume a..f in addition to digits.
         if first_char == '0' {
             match self.inner.peek_char() {
-                Some('x') | Some('X') => {
+                Some(c @ ('x' | 'X')) => {
+                    raw.push(c);
                     self.inner.next_char();
 
                     raw += &self.consume_chars(|c| matches!(c, '0'..='9' | 'a'..='f' | 'A'..='F'));
@@ -427,30 +404,27 @@ impl<'a> Lexer<'a> {
         }
 
         if is_float {
-            // TODO: Depending on the GLSL version make it an error to not have the suffix.
-            let width = self.parse_float_width_suffix()?;
-
-            Ok(TokenValue::Float(Float {
-                value: raw
-                    .parse::<f32>()
-                    .map_err(|_| PreprocessorError::FloatParsingError)?,
-                width,
-            }))
-        } else {
-            let signed = self.parse_integer_signedness_suffix();
-            let width = self.parse_integer_width_suffix()?;
-
-            // Skip the initial 0 in hexa or octal (in hexa we never added the 'x').
-            if integer_radix != 10 {
-                raw = raw.split_off(1);
+            // Parse the float width suffix
+            if let Some(c @ ('f' | 'F' | 'l' | 'L' | 'h' | 'H')) = self.inner.peek_char() {
+                self.inner.next_char();
+                raw.push(c);
             }
 
-            Ok(TokenValue::Integer(Integer {
-                value: u64::from_str_radix(&raw, integer_radix)
-                    .map_err(|_err| PreprocessorError::IntegerOverflow)?,
-                signed,
-                width,
-            }))
+            Ok(TokenValue::Float(raw))
+        } else {
+            // Parser the integer sign suffix.
+            if let Some(c @ ('u' | 'U')) = self.inner.peek_char() {
+                self.inner.next_char();
+                raw.push(c);
+            }
+
+            // Parse the integer width suffix.
+            if let Some(c @ ('l' | 'L' | 's' | 'S')) = self.inner.peek_char() {
+                self.inner.next_char();
+                raw.push(c);
+            }
+
+            Ok(TokenValue::Integer(raw))
         }
     }
 

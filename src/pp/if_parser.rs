@@ -1,4 +1,4 @@
-use crate::token::{Integer, PreprocessorError, Punct};
+use crate::token::{parse_integer, PreprocessorError, Punct};
 
 use super::{Define, Location, MacroProcessor, MeLexer, Step, StepExit, Token, TokenValue};
 use std::{collections::HashMap, convert::TryInto, rc::Rc, vec};
@@ -110,11 +110,7 @@ impl<'macros> IfParser<'macros> {
             Ok(None)
         } else if self.parsing_if {
             Ok(Some(Token {
-                value: TokenValue::Integer(Integer {
-                    value: 0,
-                    signed: true,
-                    width: 64,
-                }),
+                value: TokenValue::Integer("0".to_string()),
                 location,
             }))
         } else {
@@ -168,7 +164,11 @@ impl<'macros> IfParser<'macros> {
 
                 self.handle_defined()
             }
-            TokenValue::Integer(int) => Ok(int.value as i64),
+            TokenValue::Integer(int) => match parse_integer(&int) {
+                Ok(i) => Ok(i.value as i64),
+                Err(err) => Err(StepExit::Error((err, token.location))),
+            },
+
             TokenValue::Punct(Punct::LeftParen) => {
                 let val = self.parse_logical_or()?;
 
