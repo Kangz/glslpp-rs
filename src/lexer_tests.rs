@@ -2,7 +2,7 @@ use super::lexer::{
     CharsAndLine, Lexer, LexerItem, ReplaceComments, SkipBackslashNewline, Token, TokenValue,
     COMMENT_SENTINEL_VALUE,
 };
-use super::token::{Float, Integer, Location, PreprocessorError, Punct};
+use super::token::{Location, PreprocessorError, Punct};
 use std::ops::Range;
 
 fn c(c: char, line: u32) -> Option<(char, u32)> {
@@ -25,6 +25,12 @@ fn unwrap_token_value(item: Option<LexerItem>) -> TokenValue {
     unwrap_token(item).value
 }
 
+fn lexed_token_values(s: &str) -> Vec<TokenValue> {
+    let mut tokens: Vec<TokenValue> = Lexer::new(s).map(|t| t.unwrap().value).collect();
+    assert_eq!(tokens.pop(), Some(TokenValue::NewLine));
+    tokens
+}
+
 fn unwrap_error(item: Option<LexerItem>) -> PreprocessorError {
     item.unwrap().unwrap_err().0
 }
@@ -34,30 +40,16 @@ fn expect_lexer_end(lexer: &mut Lexer) {
     assert_eq!(lexer.next(), None);
 }
 
-impl From<i32> for TokenValue {
-    fn from(value: i32) -> Self {
-        TokenValue::Integer(Integer {
-            value: value as u64,
-            signed: true,
-            width: 32,
-        })
-    }
+fn make_ident(s: &str) -> TokenValue {
+    TokenValue::Ident(s.to_string())
 }
 
-impl From<u32> for TokenValue {
-    fn from(value: u32) -> Self {
-        TokenValue::Integer(Integer {
-            value: value as u64,
-            signed: false,
-            width: 32,
-        })
-    }
+fn make_integer(s: &str) -> TokenValue {
+    TokenValue::Integer(s.to_string())
 }
 
-impl From<f32> for TokenValue {
-    fn from(value: f32) -> Self {
-        TokenValue::Float(Float { value, width: 32 })
-    }
+fn make_float(s: &str) -> TokenValue {
+    TokenValue::Float(s.to_string())
 }
 
 #[test]
@@ -218,22 +210,25 @@ fn lex_whitespace() {
 
 #[test]
 fn lex_newline() {
-    let mut it = Lexer::new("\r\n\n");
-    assert_eq!(unwrap_token_value(it.next()), TokenValue::NewLine);
-    assert_eq!(unwrap_token_value(it.next()), TokenValue::NewLine);
-    assert_eq!(it.next(), None);
+    // (lexed_token_values consumes the last newline)
+    assert_eq!(lexed_token_values("\r\n\n"), vec![TokenValue::NewLine]);
 
     // Check a newline is added only if the last token wasn't a newline
-    let mut it = Lexer::new("\r\n\n\t/**/ //");
-    assert_eq!(unwrap_token_value(it.next()), TokenValue::NewLine);
-    expect_lexer_end(&mut it);
+    // (lexed_token_values consumes the last newline)
+    assert_eq!(
+        lexed_token_values("\r\n\n\t/**/ //"),
+        vec![TokenValue::NewLine]
+    );
 
-    let mut it = Lexer::new("\r\n\n#");
-    assert_eq!(unwrap_token_value(it.next()), TokenValue::NewLine);
-    assert_eq!(unwrap_token_value(it.next()), TokenValue::NewLine);
-    assert_eq!(unwrap_token_value(it.next()), TokenValue::Hash);
-    assert_eq!(unwrap_token_value(it.next()), TokenValue::NewLine);
-    assert_eq!(it.next(), None);
+    assert_eq!(
+        lexed_token_values("r\n\n#"),
+        vec![
+            make_ident("r"),
+            TokenValue::NewLine,
+            TokenValue::NewLine,
+            TokenValue::Hash,
+        ]
+    );
 }
 
 #[test]
@@ -271,7 +266,7 @@ fn lex_metadata() {
     assert_eq!(
         unwrap_token(it.next()),
         Token {
-            value: 1.into(),
+            value: make_integer("1"),
             location: l(1, 0..1),
             leading_whitespace: true,
             start_of_line: true
@@ -286,7 +281,7 @@ fn lex_metadata() {
     assert_eq!(
         unwrap_token(it.next()),
         Token {
-            value: 1.into(),
+            value: make_integer("1"),
             location: l(1, 1..2),
             leading_whitespace: true,
             start_of_line: true
@@ -297,7 +292,7 @@ fn lex_metadata() {
     assert_eq!(
         unwrap_token(it.next()),
         Token {
-            value: 2.into(),
+            value: make_integer("2"),
             location: l(2, 7..8),
             leading_whitespace: true,
             start_of_line: false
@@ -306,7 +301,7 @@ fn lex_metadata() {
     assert_eq!(
         unwrap_token(it.next()),
         Token {
-            value: 3.into(),
+            value: make_integer("3"),
             location: l(2, 9..10),
             leading_whitespace: true,
             start_of_line: false
@@ -336,7 +331,7 @@ fn lex_metadata() {
     assert_eq!(
         unwrap_token(it.next()),
         Token {
-            value: 4.into(),
+            value: make_integer("4"),
             location: l(3, 12..13),
             leading_whitespace: true,
             start_of_line: true
@@ -357,224 +352,182 @@ fn lex_metadata() {
 
 #[test]
 fn lex_identifiers() {
-    // Test some basic identifier cases
+    // Test some basic identifier cases with locations
     let mut it = Lexer::new("foo BA_R baz0");
     let token = unwrap_token(it.next());
-    assert_eq!(token.value, TokenValue::Ident("foo".to_string()));
+    assert_eq!(token.value, make_ident("foo"));
     assert_eq!(token.location, l(1, 0..3),);
     let token = unwrap_token(it.next());
-    assert_eq!(token.value, TokenValue::Ident("BA_R".to_string()));
+    assert_eq!(token.value, make_ident("BA_R"));
     assert_eq!(token.location, l(1, 4..8),);
     let token = unwrap_token(it.next());
-    assert_eq!(token.value, TokenValue::Ident("baz0".to_string()));
+    assert_eq!(token.value, make_ident("baz0"));
     assert_eq!(token.location, l(1, 9..13),);
     expect_lexer_end(&mut it);
 
     // Test _ is a valid identifier
-    let mut it = Lexer::new("_");
-    assert_eq!(
-        unwrap_token_value(it.next()),
-        TokenValue::Ident("_".to_string())
-    );
-    expect_lexer_end(&mut it);
+    assert_eq!(lexed_token_values("_"), vec![make_ident("_")]);
 
     // Test that identifiers are not split by escaped newlines
-    let mut it = Lexer::new("a\\\nb");
-    assert_eq!(
-        unwrap_token_value(it.next()),
-        TokenValue::Ident("ab".to_string())
-    );
-    expect_lexer_end(&mut it);
+    assert_eq!(lexed_token_values("a\\\nb"), vec![make_ident("ab")]);
 
     // Test that identifiers are split by other whitespace like /**/
-    let mut it = Lexer::new("a/**/b");
     assert_eq!(
-        unwrap_token_value(it.next()),
-        TokenValue::Ident("a".to_string())
+        lexed_token_values("a/**/b"),
+        vec![make_ident("a"), make_ident("b")]
     );
-    assert_eq!(
-        unwrap_token_value(it.next()),
-        TokenValue::Ident("b".to_string())
-    );
-    expect_lexer_end(&mut it);
 }
 
 #[test]
 fn lex_decimal() {
-    // Test some basic cases
+    // Test some basic cases with locations
     let mut it = Lexer::new("1 0u 42 65536U");
-    assert_eq!(unwrap_token_value(it.next()), 1.into());
+    assert_eq!(unwrap_token_value(it.next()), make_integer("1"));
     let token = unwrap_token(it.next());
-    assert_eq!(token.value, 0u32.into());
+    assert_eq!(token.value, make_integer("0u"));
     assert_eq!(token.location, l(1, 2..4),);
     let token = unwrap_token(it.next());
-    assert_eq!(token.value, 42.into());
+    assert_eq!(token.value, make_integer("42"));
     assert_eq!(token.location, l(1, 5..7),);
     let token = unwrap_token(it.next());
-    assert_eq!(token.value, 65536u32.into());
+    assert_eq!(token.value, make_integer("65536U"));
     assert_eq!(token.location, l(1, 8..14),);
     expect_lexer_end(&mut it);
 
     // Test splitting with identifiers
-    let mut it = Lexer::new("31ab");
-    assert_eq!(unwrap_token_value(it.next()), 31.into());
     assert_eq!(
-        unwrap_token_value(it.next()),
-        TokenValue::Ident("ab".to_string())
+        lexed_token_values("31ab"),
+        vec![make_integer("31"), make_ident("ab")]
     );
-    expect_lexer_end(&mut it);
 
     // Test splitting with whitespace
-    let mut it = Lexer::new("31/**/32");
-    assert_eq!(unwrap_token_value(it.next()), 31.into());
-    assert_eq!(unwrap_token_value(it.next()), 32.into());
-    expect_lexer_end(&mut it);
+    assert_eq!(
+        lexed_token_values("31/**/32"),
+        vec![make_integer("31"), make_integer("32")]
+    );
 
     // Test splitting with punctuation
-    let mut it = Lexer::new("31+32");
-    assert_eq!(unwrap_token_value(it.next()), 31.into());
-    assert_eq!(unwrap_token_value(it.next()), Punct::Plus.into());
-    assert_eq!(unwrap_token_value(it.next()), 32.into());
-    expect_lexer_end(&mut it);
-
-    // Test that 2^64 produces an overflow error but that 2^64-1 correctly parses (even if it might
-    // produce an error down the line).
-    let mut it = Lexer::new("18446744073709551616");
-    assert_eq!(unwrap_error(it.next()), PreprocessorError::IntegerOverflow);
-    let mut it = Lexer::new("18446744073709551615");
     assert_eq!(
-        unwrap_token_value(it.next()),
-        TokenValue::Integer(Integer {
-            value: 18446744073709551615,
-            signed: true,
-            width: 32
-        })
-    );
-    expect_lexer_end(&mut it);
-
-    // Check that the 16bit or 64bit suffixes produce errors (for now).
-    let mut it = Lexer::new("13s");
-    assert_eq!(
-        unwrap_error(it.next()),
-        PreprocessorError::NotSupported16BitLiteral
-    );
-    let mut it = Lexer::new("13S");
-    assert_eq!(
-        unwrap_error(it.next()),
-        PreprocessorError::NotSupported16BitLiteral
-    );
-    let mut it = Lexer::new("13l");
-    assert_eq!(
-        unwrap_error(it.next()),
-        PreprocessorError::NotSupported64BitLiteral
-    );
-    let mut it = Lexer::new("13L");
-    assert_eq!(
-        unwrap_error(it.next()),
-        PreprocessorError::NotSupported64BitLiteral
+        lexed_token_values("31+32"),
+        vec![make_integer("31"), Punct::Plus.into(), make_integer("32")]
     );
 
-    // Check that they produce unsupported errors even if they happen with a unsigned suffix too.
-    let mut it = Lexer::new("13uS");
+    // Test that 2^64 doesn't produce an overflow error at the lexer level.
     assert_eq!(
-        unwrap_error(it.next()),
-        PreprocessorError::NotSupported16BitLiteral
+        lexed_token_values("18446744073709551616"),
+        vec![make_integer("18446744073709551616")]
     );
-    let mut it = Lexer::new("13Ul");
+
+    // Check that the 16bit or 64bit suffixes are parsed correctly.
     assert_eq!(
-        unwrap_error(it.next()),
-        PreprocessorError::NotSupported64BitLiteral
+        lexed_token_values("13s 13S 13l 13L"),
+        vec![
+            make_integer("13s"),
+            make_integer("13S"),
+            make_integer("13l"),
+            make_integer("13L"),
+        ]
+    );
+
+    // Check that the width suffixes are parse correctly after unsigned suffixes too.
+    assert_eq!(
+        lexed_token_values("13uS 13Ul"),
+        vec![make_integer("13uS"), make_integer("13Ul"),]
+    );
+
+    // Check that signedness suffixes are consumed only once.
+    assert_eq!(
+        lexed_token_values("13Uu 13Uul"),
+        vec![
+            make_integer("13U"),
+            make_ident("u"),
+            make_integer("13U"),
+            make_ident("ul"),
+        ]
+    );
+
+    // Check that width suffixes are consumed only once.
+    assert_eq!(
+        lexed_token_values("13lS"),
+        vec![make_integer("13l"), make_ident("S"),]
     );
 }
 
 #[test]
 fn lex_hexadecimal() {
-    // Test some basic cases
+    // Test some basic cases with locations
     let mut it = Lexer::new("0x1 0X0u 0xBaFfe 0XcaFeU");
-    assert_eq!(unwrap_token_value(it.next()), 1.into());
-    assert_eq!(unwrap_token_value(it.next()), 0u32.into());
+    assert_eq!(unwrap_token_value(it.next()), make_integer("0x1"));
+    assert_eq!(unwrap_token_value(it.next()), make_integer("0X0u"));
     let token = unwrap_token(it.next());
-    assert_eq!(token.value, 0xBAFFE.into());
+    assert_eq!(token.value, make_integer("0xBaFfe"));
     assert_eq!(token.location, l(1, 9..16),);
     let token = unwrap_token(it.next());
-    assert_eq!(token.value, 0xCAFEu32.into());
+    assert_eq!(token.value, make_integer("0XcaFeU"));
     assert_eq!(token.location, l(1, 17..24),);
     expect_lexer_end(&mut it);
 
     // Test with redundant zeroes
-    let mut it = Lexer::new("0x000 0x000000000000001");
-    assert_eq!(unwrap_token_value(it.next()), 0.into());
-    assert_eq!(unwrap_token_value(it.next()), 1.into());
-    expect_lexer_end(&mut it);
+    assert_eq!(
+        lexed_token_values("0x000 0x000000000000001"),
+        vec![make_integer("0x000"), make_integer("0x000000000000001")]
+    );
 
     // Test splitting with identifiers
-    let mut it = Lexer::new("0x31zb");
-    assert_eq!(unwrap_token_value(it.next()), 0x31.into());
     assert_eq!(
-        unwrap_token_value(it.next()),
-        TokenValue::Ident("zb".to_string())
+        lexed_token_values("0x31zb"),
+        vec![make_integer("0x31"), make_ident("zb")]
     );
-    expect_lexer_end(&mut it);
 
     // Test splitting with whitespace
-    let mut it = Lexer::new("0x31/**/32");
-    assert_eq!(unwrap_token_value(it.next()), 0x31.into());
-    assert_eq!(unwrap_token_value(it.next()), 32.into());
-    expect_lexer_end(&mut it);
+    assert_eq!(
+        lexed_token_values("0x31/**/32"),
+        vec![make_integer("0x31"), make_integer("32")]
+    );
 
     // Test splitting with punctuation
-    let mut it = Lexer::new("0x31+32");
-    assert_eq!(unwrap_token_value(it.next()), 0x31.into());
-    assert_eq!(unwrap_token_value(it.next()), Punct::Plus.into());
-    assert_eq!(unwrap_token_value(it.next()), 32.into());
-    expect_lexer_end(&mut it);
-
-    // Test that 2^64 produces an overflow error but that 2^64-1 correctly parses (even if it might
-    // produce an error down the line).
-    let mut it = Lexer::new("0x10000000000000000");
-    assert_eq!(unwrap_error(it.next()), PreprocessorError::IntegerOverflow);
-    let mut it = Lexer::new("0xFFFFFFFFFFFFFFFF");
     assert_eq!(
-        unwrap_token_value(it.next()),
-        TokenValue::Integer(Integer {
-            value: 18446744073709551615,
-            signed: true,
-            width: 32
-        })
+        lexed_token_values("0x31+32"),
+        vec![make_integer("0x31"), Punct::Plus.into(), make_integer("32")]
     );
-    expect_lexer_end(&mut it);
+
+    // Test that 2^64 doesn't produce an overflow error at the lexer level.
+    assert_eq!(
+        lexed_token_values("0x10000000000000000"),
+        vec![make_integer("0x10000000000000000")]
+    );
 }
 
 #[test]
 fn lex_octal() {
     // Test some basic cases
-    let mut it = Lexer::new("01 00u 07654 01234u");
-    assert_eq!(unwrap_token_value(it.next()), 1.into());
-    assert_eq!(unwrap_token_value(it.next()), 0u32.into());
-    assert_eq!(unwrap_token_value(it.next()), 4012.into());
-    assert_eq!(unwrap_token_value(it.next()), 668u32.into());
-    expect_lexer_end(&mut it);
+    assert_eq!(
+        lexed_token_values("01 00u 07654 01234u"),
+        vec![
+            make_integer("01"),
+            make_integer("00u"),
+            make_integer("07654"),
+            make_integer("01234u")
+        ]
+    );
 
     // Test with redundant zeroes
-    let mut it = Lexer::new("0000 0000000000000001");
-    assert_eq!(unwrap_token_value(it.next()), 0.into());
-    assert_eq!(unwrap_token_value(it.next()), 1.into());
-    expect_lexer_end(&mut it);
+    assert_eq!(
+        lexed_token_values("0000 0000000000000001"),
+        vec![make_integer("0000"), make_integer("0000000000000001")],
+    );
 
     // Test splitting with identifiers
-    let mut it = Lexer::new("031zb");
-    assert_eq!(unwrap_token_value(it.next()), 25.into());
     assert_eq!(
-        unwrap_token_value(it.next()),
-        TokenValue::Ident("zb".to_string())
+        lexed_token_values("031zb"),
+        vec![make_integer("031"), make_ident("zb")],
     );
-    expect_lexer_end(&mut it);
 
     // Test splitting with whitespace
-    let mut it = Lexer::new("031/**/32");
-    assert_eq!(unwrap_token_value(it.next()), 25.into());
-    assert_eq!(unwrap_token_value(it.next()), 32.into());
-    expect_lexer_end(&mut it);
+    assert_eq!(
+        lexed_token_values("031/**/32"),
+        vec![make_integer("031"), make_integer("32")],
+    );
 
     // TODO(kangz): Fix octal numbers consuming 8 and 9s as well. This can be done with extra logic
     // already but is not worth the complexity.
@@ -588,111 +541,99 @@ fn lex_octal() {
     // expect_lexer_end(&mut it);
 
     // Test splitting with punctuation
-    let mut it = Lexer::new("031+32");
-    assert_eq!(unwrap_token_value(it.next()), 25.into());
-    assert_eq!(unwrap_token_value(it.next()), Punct::Plus.into());
-    assert_eq!(unwrap_token_value(it.next()), 32.into());
-    expect_lexer_end(&mut it);
-
-    // Test that 2^64 produces an overflow error but that 2^64-1 correctly parses (even if it might
-    // produce an error down the line).
-    let mut it = Lexer::new("02000000000000000000000");
-    assert_eq!(unwrap_error(it.next()), PreprocessorError::IntegerOverflow);
-    let mut it = Lexer::new("01777777777777777777777");
     assert_eq!(
-        unwrap_token_value(it.next()),
-        TokenValue::Integer(Integer {
-            value: 18446744073709551615,
-            signed: true,
-            width: 32
-        })
+        lexed_token_values("031+32"),
+        vec![make_integer("031"), Punct::Plus.into(), make_integer("32")],
     );
-    expect_lexer_end(&mut it);
+
+    // Test that 2^64 doesn't produce an overflow error at the lexer level.
+    assert_eq!(
+        lexed_token_values("02000000000000000000000"),
+        vec![make_integer("02000000000000000000000")]
+    );
 }
 
 #[test]
 fn lex_float() {
     // Test a couple simple cases.
-    let mut it = Lexer::new("1.0 0.0");
-    assert_eq!(unwrap_token_value(it.next()), 1.0f32.into());
-    assert_eq!(unwrap_token_value(it.next()), 0.0f32.into());
-    expect_lexer_end(&mut it);
+    assert_eq!(
+        lexed_token_values("1.0 0.0"),
+        vec![make_float("1.0"), make_float("0.0")]
+    );
 
     // Test parsing with a leading .
-    let mut it = Lexer::new(".99 0.01 .00000000");
-    assert_eq!(unwrap_token_value(it.next()), 0.99f32.into());
-    assert_eq!(unwrap_token_value(it.next()), 0.01f32.into());
-    assert_eq!(unwrap_token_value(it.next()), 0.0f32.into());
-    expect_lexer_end(&mut it);
+    assert_eq!(
+        lexed_token_values(".99 0.01 .00000000"),
+        vec![
+            make_float(".99"),
+            make_float("0.01"),
+            make_float(".00000000")
+        ]
+    );
 
     // Test parsing with nothing after the .
-    let mut it = Lexer::new("42. 0.");
-    assert_eq!(unwrap_token_value(it.next()), 42.0f32.into());
-    assert_eq!(unwrap_token_value(it.next()), 0.0f32.into());
-    expect_lexer_end(&mut it);
+    assert_eq!(
+        lexed_token_values("42. 0."),
+        vec![make_float("42."), make_float("0.")]
+    );
 
     // Test parsing with the float suffix
-    let mut it = Lexer::new("1000.f 1.f .2f");
-    assert_eq!(unwrap_token_value(it.next()), 1000.0f32.into());
-    assert_eq!(unwrap_token_value(it.next()), 1.0f32.into());
-    assert_eq!(unwrap_token_value(it.next()), 0.2f32.into());
-    expect_lexer_end(&mut it);
+    assert_eq!(
+        lexed_token_values("1000.f 1.f .2F"),
+        vec![make_float("1000.f"), make_float("1.f"), make_float(".2F")]
+    );
 
     // Test parsing with exponents
     //  - with / without float suffixes
     //  - at different points in the float parsing.
-    let mut it = Lexer::new("3e10 4.1e-10f .01e12F 4.1e+10f");
-    assert_eq!(unwrap_token_value(it.next()), 3e10f32.into());
-    assert_eq!(unwrap_token_value(it.next()), 4.1e-10f32.into());
-    assert_eq!(unwrap_token_value(it.next()), 0.01e12f32.into());
-    assert_eq!(unwrap_token_value(it.next()), 4.1e+10f32.into());
-    expect_lexer_end(&mut it);
+    assert_eq!(
+        lexed_token_values("3e10 4.1e-10f .01e12F 4.1e+10f"),
+        vec![
+            make_float("3e10"),
+            make_float("4.1e-10f"),
+            make_float(".01e12F"),
+            make_float("4.1e+10f"),
+        ]
+    );
 
     // Test parsing with exponents
     //  - After values looking like octal integer (works)
     //  - After values looking like hexadecimal integer (doesn't work)
-    let mut it = Lexer::new("05e2 0x1e-2");
-    assert_eq!(unwrap_token_value(it.next()), 5e2f32.into());
 
-    assert_eq!(unwrap_token_value(it.next()), 0x1Ei32.into());
-    assert_eq!(unwrap_token_value(it.next()), Punct::Minus.into());
-    assert_eq!(unwrap_token_value(it.next()), 2i32.into());
-
-    // Test parsing with nothing valid after the 'e' (technically it shouldn't
-    // be an error, but there's no language where that sequence of token is
-    // valid.
-    let mut it = Lexer::new("1.0e");
     assert_eq!(
-        unwrap_error(it.next()),
-        PreprocessorError::FloatParsingError
+        lexed_token_values("05e2 0x1e-2"),
+        vec![
+            make_float("05e2"),
+            make_integer("0x1e"),
+            Punct::Minus.into(),
+            make_integer("2"),
+        ]
     );
 
-    // Check that 16bit and 64bit suffixes produce errors
-    let mut it = Lexer::new("1.0l");
+    // Test that parsing a partial exponent float works, even though it isn't a valid float token.
+    assert_eq!(lexed_token_values("1.0e"), vec![make_float("1.0e"),]);
+
+    // Check that 16bit and 64bit suffixes are parsed correctly,
     assert_eq!(
-        unwrap_error(it.next()),
-        PreprocessorError::NotSupported64BitLiteral
+        lexed_token_values("1.0l 1.0L 1.0h 1.0H"),
+        vec![
+            make_float("1.0l"),
+            make_float("1.0L"),
+            make_float("1.0h"),
+            make_float("1.0H"),
+        ]
     );
-    let mut it = Lexer::new("1.0L");
+
+    // Check that 16bit and 64bit suffixes are parsed once.
     assert_eq!(
-        unwrap_error(it.next()),
-        PreprocessorError::NotSupported64BitLiteral
-    );
-    let mut it = Lexer::new("1.0h");
-    assert_eq!(
-        unwrap_error(it.next()),
-        PreprocessorError::NotSupported16BitLiteral
-    );
-    let mut it = Lexer::new("1.0H");
-    assert_eq!(
-        unwrap_error(it.next()),
-        PreprocessorError::NotSupported16BitLiteral
+        lexed_token_values("1.0lL"),
+        vec![make_float("1.0l"), make_ident("L"),]
     );
 }
 
 #[test]
 fn lex_punctuation() {
-    // Test parsing some of the token (but not all, that'd be too many tests!)
+    // Test parsing some of the token (but not all, that'd be too many tests!), with locations.
     let mut it = Lexer::new("+ != <<=");
     assert_eq!(unwrap_token_value(it.next()), Punct::Plus.into());
     let token = unwrap_token(it.next());
@@ -704,49 +645,45 @@ fn lex_punctuation() {
     expect_lexer_end(&mut it);
 
     // Test parsing a token that's a prefix of another one just before EOF
-    let mut it = Lexer::new("<");
-    assert_eq!(unwrap_token_value(it.next()), Punct::LeftAngle.into());
-    expect_lexer_end(&mut it);
+    assert_eq!(lexed_token_values("<"), vec![Punct::LeftAngle.into()]);
 
     // Test \\\n doesn't split the token
-    let mut it = Lexer::new("=\\\n=");
-    assert_eq!(unwrap_token_value(it.next()), Punct::EqualEqual.into());
-    expect_lexer_end(&mut it);
+    assert_eq!(lexed_token_values("=\\\n="), vec![Punct::EqualEqual.into()]);
 
     // Test whitespace splits the token
-    let mut it = Lexer::new("+/**/=");
-    assert_eq!(unwrap_token_value(it.next()), Punct::Plus.into());
-    assert_eq!(unwrap_token_value(it.next()), Punct::Equal.into());
-    expect_lexer_end(&mut it);
+    assert_eq!(
+        lexed_token_values("+/**/="),
+        vec![Punct::Plus.into(), Punct::Equal.into()]
+    );
 
     // Test a number stops processing the token
-    let mut it = Lexer::new("!1");
-    assert_eq!(unwrap_token_value(it.next()), Punct::Bang.into());
-    assert_eq!(unwrap_token_value(it.next()), 1.into());
-    expect_lexer_end(&mut it);
+    assert_eq!(
+        lexed_token_values("!1"),
+        vec![Punct::Bang.into(), make_integer("1")]
+    );
 
     // Test an identifier stops processing the token
-    let mut it = Lexer::new("&a");
-    assert_eq!(unwrap_token_value(it.next()), Punct::Ampersand.into());
     assert_eq!(
-        unwrap_token_value(it.next()),
-        TokenValue::Ident("a".to_string())
+        lexed_token_values("&a"),
+        vec![Punct::Ampersand.into(), make_ident("a")]
     );
-    expect_lexer_end(&mut it);
 
     // Test whitespace splits the token
-    let mut it = Lexer::new(">/**/>");
-    assert_eq!(unwrap_token_value(it.next()), Punct::RightAngle.into());
-    assert_eq!(unwrap_token_value(it.next()), Punct::RightAngle.into());
-    expect_lexer_end(&mut it);
+    assert_eq!(
+        lexed_token_values(">/**/>"),
+        vec![Punct::RightAngle.into(), Punct::RightAngle.into()]
+    );
 
     // Test that tokens are parsed greedily: `a+++++b` is `a ++ ++ + b` (invalid GLSL) and not
     // `(a ++) + (++ b)` (valid GLSL)
-    let mut it = Lexer::new("+++++");
-    assert_eq!(unwrap_token_value(it.next()), Punct::Increment.into());
-    assert_eq!(unwrap_token_value(it.next()), Punct::Increment.into());
-    assert_eq!(unwrap_token_value(it.next()), Punct::Plus.into());
-    expect_lexer_end(&mut it);
+    assert_eq!(
+        lexed_token_values("+++++"),
+        vec![
+            Punct::Increment.into(),
+            Punct::Increment.into(),
+            Punct::Plus.into()
+        ]
+    );
 
     // Test that an invalid char produces and error
     let mut it = Lexer::new("@");
@@ -756,22 +693,25 @@ fn lex_punctuation() {
     );
 
     // Extra punctuation tests for code coverage.
-    let mut it = Lexer::new("<= >= += -= &= || |= | ^= { } ] ? .");
-    assert_eq!(unwrap_token_value(it.next()), Punct::LessEqual.into());
-    assert_eq!(unwrap_token_value(it.next()), Punct::GreaterEqual.into());
-    assert_eq!(unwrap_token_value(it.next()), Punct::AddAssign.into());
-    assert_eq!(unwrap_token_value(it.next()), Punct::SubAssign.into());
-    assert_eq!(unwrap_token_value(it.next()), Punct::AndAssign.into());
-    assert_eq!(unwrap_token_value(it.next()), Punct::LogicalOr.into());
-    assert_eq!(unwrap_token_value(it.next()), Punct::OrAssign.into());
-    assert_eq!(unwrap_token_value(it.next()), Punct::Pipe.into());
-    assert_eq!(unwrap_token_value(it.next()), Punct::XorAssign.into());
-    assert_eq!(unwrap_token_value(it.next()), Punct::LeftBrace.into());
-    assert_eq!(unwrap_token_value(it.next()), Punct::RightBrace.into());
-    assert_eq!(unwrap_token_value(it.next()), Punct::RightBracket.into());
-    assert_eq!(unwrap_token_value(it.next()), Punct::Question.into());
-    assert_eq!(unwrap_token_value(it.next()), Punct::Dot.into());
-    expect_lexer_end(&mut it);
+    assert_eq!(
+        lexed_token_values("<= >= += -= &= || |= | ^= { } ] ? ."),
+        vec![
+            Punct::LessEqual.into(),
+            Punct::GreaterEqual.into(),
+            Punct::AddAssign.into(),
+            Punct::SubAssign.into(),
+            Punct::AndAssign.into(),
+            Punct::LogicalOr.into(),
+            Punct::OrAssign.into(),
+            Punct::Pipe.into(),
+            Punct::XorAssign.into(),
+            Punct::LeftBrace.into(),
+            Punct::RightBrace.into(),
+            Punct::RightBracket.into(),
+            Punct::Question.into(),
+            Punct::Dot.into(),
+        ]
+    );
 }
 
 #[test]

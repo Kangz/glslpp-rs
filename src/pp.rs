@@ -953,11 +953,9 @@ impl MacroProcessor {
                 };
 
                 return Ok(Token {
-                    value: TokenValue::Integer(Integer {
-                        value: lexer.apply_line_offset(line, token.location)? as u64,
-                        signed: false,
-                        width: 32,
-                    }),
+                    value: TokenValue::Integer(
+                        lexer.apply_line_offset(line, token.location)?.to_string(),
+                    ),
                     location: token.location,
                 });
             }

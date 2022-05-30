@@ -1,6 +1,6 @@
 use super::lexer::{self, Token as LexerToken, TokenValue as LexerTokenValue};
 use super::pp::{convert_lexer_token, Preprocessor, PreprocessorItem};
-use super::token::{Float, Integer, Location, PreprocessorError, Punct, Token, TokenValue};
+use super::token::{Location, PreprocessorError, Punct, Token, TokenValue};
 
 struct NoopPreprocessor<'a> {
     lexer: lexer::Lexer<'a>,
@@ -94,10 +94,7 @@ fn parse_define() {
     );
     check_preprocessing_error(
         "#define 1.0",
-        PreprocessorError::UnexpectedToken(TokenValue::Float(Float {
-            value: 1.0,
-            width: 32,
-        })),
+        PreprocessorError::UnexpectedToken(TokenValue::Float("1.0".to_string())),
     );
 
     // Test that there must be a name before the new line
@@ -961,7 +958,7 @@ fn skipping_behavior() {
              #line 1000
          #endif
          __LINE__",
-        "4u",
+        "4",
     );
 
     // Check that #version/extension/pragma are skipped.
@@ -983,7 +980,7 @@ fn parse_line() {
          #line 3
          #line 0xF00
          __LINE__",
-        "0xF01u",
+        "3841",
     );
 
     // Test with something other than a number after #line (including a newline)
@@ -1000,7 +997,7 @@ fn parse_line() {
          #line !
          #endif
          __LINE__",
-        "4u",
+        "4",
     );
     // Test that #line must have a newline after the integer (this will change when #line
     // supports constant expressions)
@@ -1016,17 +1013,17 @@ fn parse_line() {
     check_preprocessed_result(
         "#line 20 << 2 + 1
          __LINE__",
-        "161u",
+        "161",
     );
     check_preprocessed_result(
         "#line 20 * 0 -2 + 100
         __LINE__",
-        "99u",
+        "99",
     );
     check_preprocessed_result(
         "#line 0 (1 << 1 * (10)) % 2
         __LINE__",
-        "1u",
+        "1",
     );
 
     // Test passing both a line and file id is allowed.
@@ -1035,11 +1032,7 @@ fn parse_line() {
     // Test passing more numbers is invalid.
     check_preprocessing_error(
         "#line 0 1 2",
-        PreprocessorError::UnexpectedToken(TokenValue::Integer(Integer {
-            value: 2,
-            signed: true,
-            width: 32,
-        })),
+        PreprocessorError::UnexpectedToken(TokenValue::Integer("2".to_string())),
     );
 }
 
@@ -1051,18 +1044,18 @@ fn line_define() {
          __LINE__
 
          __LINE__",
-        "1u 2u 4u",
+        "1 2 4",
     );
 
     // Test that __LINE__ split over multiple lines gives the first line.
-    check_preprocessed_result("__L\\\nINE__", "1u");
+    check_preprocessed_result("__L\\\nINE__", "1");
 
     // Test that the __LINE__ define used in define gives the invocation's line
     check_preprocessed_result(
         "#define MY_DEFINE __LINE__
          MY_DEFINE
          MY\\\n_DEFINE",
-        "2u 3u",
+        "2 3",
     );
 
     // Test a corner case where the __LINE__ is a peeked token for function-like
@@ -1070,7 +1063,7 @@ fn line_define() {
     check_preprocessed_result(
         "#define A(foo) Bleh
          A __LINE__ B",
-        "A 2u B",
+        "A 2 B",
     );
 
     // Test that __LINE__ inside function like defines is the position of the closing )
@@ -1080,8 +1073,8 @@ fn line_define() {
          A(-, -)
          A(-, -
          )",
-        "- 3u - + 3u +
-         - 5u - + 5u +",
+        "- 3 - + 3 +
+         - 5 - + 5 +",
     );
 
     // Test that the __LINE__ inside a define's argument get the correct value.
@@ -1089,13 +1082,13 @@ fn line_define() {
         "#define A(X) X
          A(__LINE__
          __LINE__)",
-        "2u 3u",
+        "2 3",
     );
     check_preprocessed_result(
         "#define B(X) X
          #define A(X) B(X) + __LINE__
          A(__LINE__)",
-        "3u + 3u",
+        "3 + 3",
     );
 
     // Check that #line is taken into account and can modify the line number in both directions.
@@ -1107,14 +1100,14 @@ fn line_define() {
          #line 0
          __LINE__
          __LINE__",
-        "1001u 1002u 1u 2u",
+        "1001 1002 1 2",
     );
 
     // Check that line computations are not allowed to overflow an u32
     check_preprocessed_result(
         "#line 4294967294
          __LINE__",
-        "4294967295u",
+        "4294967295",
     );
     check_preprocessing_error(
         "#line 4294967295
@@ -1125,10 +1118,7 @@ fn line_define() {
     // Check that line directives don't allow floats
     check_preprocessing_error(
         "#line 1.0",
-        PreprocessorError::UnexpectedToken(TokenValue::Float(Float {
-            value: 1.0,
-            width: 32,
-        })),
+        PreprocessorError::UnexpectedToken(TokenValue::Float("1.0".to_string())),
     )
 }
 
@@ -1147,11 +1137,7 @@ fn parse_version() {
             assert_eq!(version.tokens.len(), 3);
             assert_eq!(
                 version.tokens[0].value,
-                TokenValue::Integer(Integer {
-                    value: 1,
-                    signed: true,
-                    width: 32
-                })
+                TokenValue::Integer("1".to_string())
             );
             assert_eq!(version.tokens[1].value, TokenValue::Punct(Punct::Semicolon));
             assert_eq!(version.tokens[2].value, TokenValue::Punct(Punct::LeftParen));
@@ -1402,12 +1388,12 @@ fn add_define() {
     );
 
     // Test some crashes detected by fuzzing
-    let mut pp = Preprocessor::new("#ifG/fp");
-    while let Some(_) = pp.next() {}
+    let pp = Preprocessor::new("#ifG/fp");
+    for _ in pp {}
 
-    let mut pp = Preprocessor::new("\n#if~O%t");
-    while let Some(_) = pp.next() {}
+    let pp = Preprocessor::new("\n#if~O%t");
+    for _ in pp {}
 
-    let mut pp = Preprocessor::new("#if~f>>~f");
-    while let Some(_) = pp.next() {}
+    let pp = Preprocessor::new("#if~f>>~f");
+    for _ in pp {}
 }

@@ -142,8 +142,8 @@ pub struct Pragma {
 pub enum TokenValue {
     Ident(String),
 
-    Integer(Integer),
-    Float(Float),
+    Integer(String),
+    Float(String),
     Punct(Punct),
 
     Version(Version),
@@ -157,3 +157,72 @@ pub struct Token {
     pub location: Location,
     // TODO macro invocation stack?
 }
+
+pub fn parse_integer(mut s: &str) -> Result<Integer, PreprocessorError> {
+    let mut signed = true;
+    let width = 32;
+    let mut radix = 10;
+
+    // Parse prefixes and suffixes before calling u64::from_radix_str.
+
+    // Integers may end with an optional width suffix.
+    match s.chars().last() {
+        Some('l' | 'L') => return Err(PreprocessorError::NotSupported64BitLiteral),
+        Some('s' | 'S') => return Err(PreprocessorError::NotSupported16BitLiteral),
+        _ => {}
+    }
+
+    // Prior to that there may be an optional signedness suffix.
+    if let Some('u' | 'U') = s.chars().last() {
+        signed = false;
+        s = &s[..s.len() - 1];
+    }
+
+    // Strip the prefix for the integer radix.
+    let mut chars = s.chars();
+    if chars.next() == Some('0') {
+        match chars.next() {
+            Some('x' | 'X') => {
+                // Hexadecimal numvers, strip first '0x'.
+                s = &s[2..];
+                radix = 16;
+            }
+            Some(_) => {
+                // Octal numbers, strip first '0'.
+                s = &s[1..];
+                radix = 8;
+            }
+            // Just "0" is a decimal 0.
+            None => {}
+        }
+    }
+
+    Ok(Integer {
+        signed,
+        width,
+        value: u64::from_str_radix(s, radix).map_err(|_err| PreprocessorError::IntegerOverflow)?,
+    })
+}
+
+pub fn parse_float(mut s: &str) -> Result<Float, PreprocessorError> {
+    let width = 32;
+
+    // floats may end with an optional width suffix.
+    match s.chars().last() {
+        Some('l' | 'L') => return Err(PreprocessorError::NotSupported64BitLiteral),
+        Some('h' | 'H') => return Err(PreprocessorError::NotSupported16BitLiteral),
+        Some('f' | 'F') => {
+            s = &s[..s.len() - 1];
+        }
+        _ => {}
+    }
+
+    Ok(Float {
+        width,
+        value: s
+            .parse::<f32>()
+            .map_err(|_| PreprocessorError::FloatParsingError)?,
+    })
+}
+
+// TODO tests for parse_*
