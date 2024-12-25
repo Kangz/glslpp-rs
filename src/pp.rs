@@ -1,11 +1,11 @@
 use crate::lexer::{self, Token as LexerToken, TokenValue as LexerTokenValue};
 use crate::token::*;
-use std::{
-    cmp::Ordering,
-    collections::{HashMap, HashSet},
-    convert::TryFrom,
-    rc::Rc,
-};
+use alloc::rc::Rc;
+use alloc::string::{String, ToString};
+use alloc::vec;
+use alloc::vec::Vec;
+use core::{cmp::Ordering, convert::TryFrom};
+use hashbrown::{HashMap, HashSet};
 
 mod if_parser;
 
@@ -694,7 +694,7 @@ impl MacroProcessor {
 
                 parameters: Default::default(),
                 parameter_position: 0,
-                parameter_expanding: std::usize::MAX,
+                parameter_expanding: usize::MAX,
             };
 
             // If this is a not a function-like define, __LINE__ inside the define is the line of the first
@@ -911,7 +911,7 @@ impl MacroProcessor {
                     invocation.parameter_position += 1;
                     return Ok(token.clone());
                 } else {
-                    invocation.parameter_expanding = std::usize::MAX;
+                    invocation.parameter_expanding = usize::MAX;
                     return Continue.into();
                 }
             }

@@ -1,6 +1,8 @@
 use super::lexer::{self, Token as LexerToken, TokenValue as LexerTokenValue};
 use super::pp::{convert_lexer_token, Preprocessor, PreprocessorItem};
 use super::token::{Location, PreprocessorError, Punct, Token, TokenValue};
+use alloc::string::ToString;
+use alloc::vec::Vec;
 
 struct NoopPreprocessor<'a> {
     lexer: lexer::Lexer<'a>,

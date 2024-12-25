@@ -1,5 +1,6 @@
 use crate::token::{Location, PreprocessorError, Punct};
-use std::str::Chars;
+use alloc::string::String;
+use core::str::Chars;
 use unicode_xid::UnicodeXID;
 
 type CharAndLine = (char, u32);

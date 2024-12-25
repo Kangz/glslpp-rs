@@ -3,7 +3,10 @@ use super::lexer::{
     COMMENT_SENTINEL_VALUE,
 };
 use super::token::{Location, PreprocessorError, Punct};
-use std::ops::Range;
+use alloc::string::ToString;
+use alloc::vec;
+use alloc::vec::Vec;
+use core::ops::Range;
 
 fn c(c: char, line: u32) -> Option<(char, u32)> {
     Some((c, line))
