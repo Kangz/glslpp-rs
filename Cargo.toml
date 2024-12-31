@@ -10,3 +10,4 @@ license = "BSD-3-Clause"
 
 [dependencies]
 unicode-xid = "0.2"
+hashbrown = "0.15.2"

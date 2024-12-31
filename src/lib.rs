@@ -1,3 +1,7 @@
+#![no_std]
+
+extern crate alloc;
+extern crate hashbrown;
 extern crate unicode_xid;
 
 #[allow(clippy::match_like_matches_macro)]

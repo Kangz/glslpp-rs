@@ -1,7 +1,11 @@
 use crate::token::{parse_integer, PreprocessorError, Punct};
 
 use super::{Define, Location, MacroProcessor, MeLexer, Step, StepExit, Token, TokenValue};
-use std::{collections::HashMap, convert::TryInto, rc::Rc, vec};
+use alloc::string::{String, ToString};
+use alloc::vec::Vec;
+use alloc::{rc::Rc, vec};
+use core::convert::TryInto;
+use hashbrown::HashMap;
 
 struct IfLexer<'macros> {
     tokens: vec::IntoIter<Token>,
