@@ -446,7 +446,7 @@ impl<'macros> IfParser<'macros> {
     }
 }
 
-impl<'macros> MeLexer for IfLexer<'macros> {
+impl MeLexer for IfLexer<'_> {
     fn step(&mut self) -> Step<Token> {
         self.tokens.next().ok_or(StepExit::Finished)
     }

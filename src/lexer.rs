@@ -36,7 +36,7 @@ impl<'a> CharsAndLine<'a> {
     }
 }
 
-impl<'a> Iterator for CharsAndLine<'a> {
+impl Iterator for CharsAndLine<'_> {
     type Item = CharAndLine;
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -94,7 +94,7 @@ impl<'a> SkipBackslashNewline<'a> {
     }
 }
 
-impl<'a> Iterator for SkipBackslashNewline<'a> {
+impl Iterator for SkipBackslashNewline<'_> {
     type Item = CharAndLine;
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -142,7 +142,7 @@ impl<'a> ReplaceComments<'a> {
     }
 }
 
-impl<'a> Iterator for ReplaceComments<'a> {
+impl Iterator for ReplaceComments<'_> {
     type Item = CharAndLine;
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -347,7 +347,7 @@ impl<'a> Lexer<'a> {
                     raw.push(c);
                     self.inner.next_char();
 
-                    raw += &self.consume_chars(|c| matches!(c, '0'..='9' | 'a'..='f' | 'A'..='F'));
+                    raw += &self.consume_chars(|c| c.is_ascii_hexdigit());
                     integer_radix = 16;
                 }
 
@@ -365,7 +365,7 @@ impl<'a> Lexer<'a> {
             is_float = true;
         } else {
             // Parse any digits at the end of integers, or for the non-fractional part of floats.
-            raw += &self.consume_chars(|c| ('0'..='9').contains(&c));
+            raw += &self.consume_chars(|c| c.is_ascii_digit());
 
             if self.next_char_if(|c| c == '.').is_some() {
                 raw.push('.');
@@ -376,7 +376,7 @@ impl<'a> Lexer<'a> {
         // At this point either we're an integer missing only suffixes, or we're a float with
         // everything up to the . consumed.
         if is_float {
-            raw += &self.consume_chars(|c| ('0'..='9').contains(&c));
+            raw += &self.consume_chars(|c| c.is_ascii_digit());
         }
 
         // Handle scientific notation with a (e|E)(+|-|)\d+ suffix when we're a float or an
@@ -401,7 +401,7 @@ impl<'a> Lexer<'a> {
             }
 
             // TODO: what should we do when there is no number after the exponent?
-            raw += &self.consume_chars(|c| ('0'..='9').contains(&c));
+            raw += &self.consume_chars(|c| c.is_ascii_digit());
         }
 
         if is_float {
@@ -512,7 +512,7 @@ impl<'a> Lexer<'a> {
     }
 }
 
-impl<'a> Iterator for Lexer<'a> {
+impl Iterator for Lexer<'_> {
     type Item = LexerItem;
 
     fn next(&mut self) -> Option<Self::Item> {

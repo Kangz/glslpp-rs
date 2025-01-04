@@ -1,6 +1,7 @@
 [package]
 name = "pp-rs"
 version = "0.2.1"
+edition = "2021"
 authors = ["pp-rs Developers"]
 description = "Shader preprocessor"
 homepage = "https://github.com/Kangz/glslpp-rs"

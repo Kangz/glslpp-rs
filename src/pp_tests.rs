@@ -9,7 +9,7 @@ struct NoopPreprocessor<'a> {
 }
 
 impl<'a> NoopPreprocessor<'a> {
-    pub fn new(input: &'a str) -> NoopPreprocessor {
+    pub fn new(input: &'a str) -> NoopPreprocessor<'a> {
         NoopPreprocessor {
             lexer: lexer::Lexer::new(input),
         }

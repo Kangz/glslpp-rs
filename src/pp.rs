@@ -127,7 +127,7 @@ fn legal_redefinition(a: &Define, b: &Define) -> bool {
 }
 
 impl<'a> DirectiveProcessor<'a> {
-    pub fn new(input: &'a str) -> DirectiveProcessor {
+    pub fn new(input: &'a str) -> DirectiveProcessor<'a> {
         DirectiveProcessor {
             lexer: lexer::Lexer::new(input),
             defines: Default::default(),
@@ -274,7 +274,7 @@ impl<'a> DirectiveProcessor<'a> {
 
         // Defines are allowed to be redefined if they are exactly the same up to token locations.
         if let Some(previous_define) = self.defines.get(&define.name) {
-            if legal_redefinition(&*previous_define, &define) {
+            if legal_redefinition(previous_define, &define) {
                 Ok(())
             } else {
                 Err(StepExit::Error((
@@ -565,7 +565,6 @@ impl<'a> DirectiveProcessor<'a> {
 
         if let LexerTokenValue::Ident(ref directive) = token.value {
             match directive.as_str() {
-                // TODO elif line
                 "error" => self.parse_error_directive(token.location)?,
                 "line" => self.parse_line_directive(token.location)?,
 
@@ -613,7 +612,7 @@ impl<'a> DirectiveProcessor<'a> {
     }
 }
 
-impl<'a> MeLexer for DirectiveProcessor<'a> {
+impl MeLexer for DirectiveProcessor<'_> {
     fn step(&mut self) -> Step<Token> {
         let step = (|| {
             // TODO: if we are skipping invalid characters should be allowed.
@@ -841,7 +840,7 @@ impl MacroProcessor {
             position: usize,
         }
 
-        impl<'a> MeLexer for ExpandParameterLexer<'a> {
+        impl MeLexer for ExpandParameterLexer<'_> {
             fn step(&mut self) -> Step<Token> {
                 if let Some(token) = self.tokens.get(self.position) {
                     self.position += 1;
@@ -980,7 +979,7 @@ pub struct Preprocessor<'a> {
 }
 
 impl<'a> Preprocessor<'a> {
-    pub fn new(input: &'a str) -> Preprocessor {
+    pub fn new(input: &'a str) -> Preprocessor<'a> {
         Preprocessor {
             directive_processor: DirectiveProcessor::new(input),
             macro_processor: Default::default(),
@@ -1016,7 +1015,7 @@ impl<'a> Preprocessor<'a> {
 
 pub type PreprocessorItem = Result<Token, (PreprocessorError, Location)>;
 
-impl<'a> Iterator for Preprocessor<'a> {
+impl Iterator for Preprocessor<'_> {
     type Item = PreprocessorItem;
 
     fn next(&mut self) -> Option<Self::Item> {
