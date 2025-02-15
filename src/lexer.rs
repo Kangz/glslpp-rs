@@ -1,7 +1,7 @@
 use crate::token::{Location, PreprocessorError, Punct};
 use alloc::string::String;
 use core::str::Chars;
-use unicode_xid::UnicodeXID;
+use unicode_ident::{is_xid_continue, is_xid_start};
 
 type CharAndLine = (char, u32);
 
@@ -306,11 +306,11 @@ impl<'a> Lexer<'a> {
     fn parse_identifier(&mut self) -> Result<TokenValue, PreprocessorError> {
         let mut identifier = String::default();
 
-        if let Some(c) = self.next_char_if(|c| c.is_xid_start() || c == '_') {
+        if let Some(c) = self.next_char_if(|c| is_xid_start(c) || c == '_') {
             identifier.push(c);
         }
 
-        let rest = self.consume_chars(|c| c.is_xid_continue());
+        let rest = self.consume_chars(|c| is_xid_continue(c));
         identifier.push_str(&rest);
 
         // TODO check if identifier is larger than the limit.
@@ -562,7 +562,7 @@ impl Iterator for Lexer<'_> {
                 }
                 _ => {
                     // TODO: see todo in `parse_identifier` for information
-                    if current_char.is_xid_start() || current_char == '_' {
+                    if is_xid_start(current_char) || current_char == '_' {
                         self.parse_identifier()
                     } else {
                         self.parse_punctuation()
