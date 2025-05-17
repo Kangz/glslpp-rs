@@ -3,7 +3,6 @@ use super::lexer::{
     COMMENT_SENTINEL_VALUE,
 };
 use super::token::{Location, PreprocessorError, Punct};
-use alloc::string::ToString;
 use alloc::vec;
 use alloc::vec::Vec;
 use core::ops::Range;
@@ -44,15 +43,15 @@ fn expect_lexer_end(lexer: &mut Lexer) {
 }
 
 fn make_ident(s: &str) -> TokenValue {
-    TokenValue::Ident(s.to_string())
+    TokenValue::Ident(s.into())
 }
 
 fn make_integer(s: &str) -> TokenValue {
-    TokenValue::Integer(s.to_string())
+    TokenValue::Integer(s.into())
 }
 
 fn make_float(s: &str) -> TokenValue {
-    TokenValue::Float(s.to_string())
+    TokenValue::Float(s.into())
 }
 
 #[test]
@@ -237,17 +236,11 @@ fn lex_newline() {
 #[test]
 fn lex_hash() {
     let mut it = Lexer::new("a#b");
-    assert_eq!(
-        unwrap_token_value(it.next()),
-        TokenValue::Ident("a".to_string())
-    );
+    assert_eq!(unwrap_token_value(it.next()), TokenValue::Ident("a".into()));
     let token = unwrap_token(it.next());
     assert_eq!(token.value, TokenValue::Hash);
     assert_eq!(token.location, l(1, 1..2));
-    assert_eq!(
-        unwrap_token_value(it.next()),
-        TokenValue::Ident("b".to_string())
-    );
+    assert_eq!(unwrap_token_value(it.next()), TokenValue::Ident("b".into()));
     expect_lexer_end(&mut it);
 
     let mut it = Lexer::new("\nvoid #");
@@ -726,7 +719,7 @@ fn lex_had_comments() {
     assert!(!it.had_comments());
     assert_eq!(
         unwrap_token_value(it.next()),
-        TokenValue::Ident("version".to_string())
+        TokenValue::Ident("version".into())
     );
     assert!(!it.had_comments());
     expect_lexer_end(&mut it);
@@ -755,7 +748,7 @@ fn lex_had_comments() {
     assert!(it.had_comments());
     assert_eq!(
         unwrap_token_value(it.next()),
-        TokenValue::Ident("version".to_string())
+        TokenValue::Ident("version".into())
     );
     assert!(it.had_comments());
     expect_lexer_end(&mut it);

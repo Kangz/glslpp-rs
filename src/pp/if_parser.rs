@@ -1,7 +1,7 @@
 use crate::token::{parse_integer, PreprocessorError, Punct};
 
 use super::{Define, Location, MacroProcessor, MeLexer, Step, StepExit, Token, TokenValue};
-use alloc::string::{String, ToString};
+use crate::String;
 use alloc::vec::Vec;
 use alloc::{rc::Rc, vec};
 use core::convert::TryInto;
@@ -114,12 +114,12 @@ impl<'macros> IfParser<'macros> {
             Ok(None)
         } else if self.parsing_if {
             Ok(Some(Token {
-                value: TokenValue::Integer("0".to_string()),
+                value: TokenValue::Integer("0".into()),
                 location,
             }))
         } else {
             Err(StepExit::Error((
-                PreprocessorError::UnexpectedToken(TokenValue::Ident(name.to_string())),
+                PreprocessorError::UnexpectedToken(TokenValue::Ident(name.into())),
                 location,
             )))
         }

@@ -1,10 +1,8 @@
 use crate::token::{Location, PreprocessorError, Punct};
-use alloc::string::String;
 use core::str::Chars;
 use unicode_ident::{is_xid_continue, is_xid_start};
-
 type CharAndLine = (char, u32);
-
+use crate::String;
 // GLSL ES 3.20 specification section 3.10. Logical Phases of Compilation
 // This iterator implements phases 4 and 5 of the logical phases of compilation:
 //
@@ -310,10 +308,8 @@ impl<'a> Lexer<'a> {
             identifier.push(c);
         }
 
-        let rest = self.consume_chars(|c| is_xid_continue(c));
-        identifier.push_str(&rest);
+        self.consume_chars_into(&mut identifier, is_xid_continue);
 
-        // TODO check if identifier is larger than the limit.
         Ok(TokenValue::Ident(identifier))
     }
 
@@ -326,18 +322,16 @@ impl<'a> Lexer<'a> {
         None
     }
 
-    fn consume_chars(&mut self, filter: impl Fn(char) -> bool) -> String {
-        let mut result: String = Default::default();
+    fn consume_chars_into(&mut self, dst: &mut String, filter: impl Fn(char) -> bool) {
         while let Some(c) = self.next_char_if(&filter) {
-            result.push(c);
+            dst.push(c);
         }
-        result
     }
 
     fn parse_number(&mut self, first_char: char) -> Result<TokenValue, PreprocessorError> {
         let mut is_float = false;
         let mut integer_radix = 10;
-        let mut raw: String = Default::default();
+        let mut raw = String::default();
         raw.push(first_char);
 
         // Handle hexadecimal numbers that needs to consume a..f in addition to digits.
@@ -347,7 +341,7 @@ impl<'a> Lexer<'a> {
                     raw.push(c);
                     self.inner.next_char();
 
-                    raw += &self.consume_chars(|c| c.is_ascii_hexdigit());
+                    self.consume_chars_into(&mut raw, |c| c.is_ascii_hexdigit());
                     integer_radix = 16;
                 }
 
@@ -365,7 +359,7 @@ impl<'a> Lexer<'a> {
             is_float = true;
         } else {
             // Parse any digits at the end of integers, or for the non-fractional part of floats.
-            raw += &self.consume_chars(|c| c.is_ascii_digit());
+            self.consume_chars_into(&mut raw, |c| c.is_ascii_digit());
 
             if self.next_char_if(|c| c == '.').is_some() {
                 raw.push('.');
@@ -376,7 +370,7 @@ impl<'a> Lexer<'a> {
         // At this point either we're an integer missing only suffixes, or we're a float with
         // everything up to the . consumed.
         if is_float {
-            raw += &self.consume_chars(|c| c.is_ascii_digit());
+            self.consume_chars_into(&mut raw, |c| c.is_ascii_digit());
         }
 
         // Handle scientific notation with a (e|E)(+|-|)\d+ suffix when we're a float or an
@@ -401,7 +395,7 @@ impl<'a> Lexer<'a> {
             }
 
             // TODO: what should we do when there is no number after the exponent?
-            raw += &self.consume_chars(|c| c.is_ascii_digit());
+            self.consume_chars_into(&mut raw, |c| c.is_ascii_digit());
         }
 
         if is_float {
