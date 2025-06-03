@@ -10,5 +10,5 @@ keywords = ["shader", "preprocessor", "glsl"]
 license = "BSD-3-Clause"
 
 [dependencies]
-hashbrown = "0.15.2"
+hashbrown = { version = "0.15.2", default-features = false, features = ["default-hasher"] }
 unicode-ident = "1.0"
