@@ -1,12 +1,12 @@
 use crate::lexer::{self, Token as LexerToken, TokenValue as LexerTokenValue};
 use crate::token::*;
+use crate::String;
 use alloc::rc::Rc;
-use alloc::string::{String, ToString};
+use alloc::string::ToString;
 use alloc::vec;
 use alloc::vec::Vec;
 use core::{cmp::Ordering, convert::TryFrom};
 use hashbrown::{HashMap, HashSet};
-
 mod if_parser;
 
 #[derive(Clone, PartialEq, Debug)]
@@ -248,7 +248,7 @@ impl<'a> DirectiveProcessor<'a> {
 
                         let (param_name, param_location) =
                             self.expect_lexer_ident(token.location)?;
-                        if define.params.contains_key(&param_name) {
+                        if define.params.contains_key(param_name.as_str()) {
                             return Err(StepExit::Error((
                                 PreprocessorError::DuplicateParameter,
                                 param_location,
@@ -294,7 +294,7 @@ impl<'a> DirectiveProcessor<'a> {
         content: &str,
     ) -> Result<(), (PreprocessorError, Location)> {
         let mut define = Define {
-            name: name.to_string(),
+            name: name.into(),
             function_like: false,
             params: Default::default(),
             tokens: Default::default(),
@@ -953,7 +953,10 @@ impl MacroProcessor {
 
                 return Ok(Token {
                     value: TokenValue::Integer(
-                        lexer.apply_line_offset(line, token.location)?.to_string(),
+                        lexer
+                            .apply_line_offset(line, token.location)?
+                            .to_string()
+                            .into(),
                     ),
                     location: token.location,
                 });

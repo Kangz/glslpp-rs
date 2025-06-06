@@ -1,6 +1,5 @@
-use alloc::string::String;
+use crate::String;
 use alloc::vec::Vec;
-
 //TODO: Source file
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub struct Location {

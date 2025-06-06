@@ -1,7 +1,6 @@
 use super::lexer::{self, Token as LexerToken, TokenValue as LexerTokenValue};
 use super::pp::{convert_lexer_token, Preprocessor, PreprocessorItem};
 use super::token::{Location, PreprocessorError, Punct, Token, TokenValue};
-use alloc::string::ToString;
 use alloc::vec::Vec;
 
 struct NoopPreprocessor<'a> {
@@ -96,7 +95,7 @@ fn parse_define() {
     );
     check_preprocessing_error(
         "#define 1.0",
-        PreprocessorError::UnexpectedToken(TokenValue::Float("1.0".to_string())),
+        PreprocessorError::UnexpectedToken(TokenValue::Float("1.0".into())),
     );
 
     // Test that there must be a name before the new line
@@ -269,11 +268,11 @@ fn function_like_define() {
     // Test that two identifier in a row is disallowed
     check_preprocessing_error(
         "#define A(a b) foo",
-        PreprocessorError::UnexpectedToken(TokenValue::Ident("b".to_string())),
+        PreprocessorError::UnexpectedToken(TokenValue::Ident("b".into())),
     );
     check_preprocessing_error(
         "#define A(a, b c) foo",
-        PreprocessorError::UnexpectedToken(TokenValue::Ident("c".to_string())),
+        PreprocessorError::UnexpectedToken(TokenValue::Ident("c".into())),
     );
 
     // Test passing too many arguments is disallowed
@@ -1034,7 +1033,7 @@ fn parse_line() {
     // Test passing more numbers is invalid.
     check_preprocessing_error(
         "#line 0 1 2",
-        PreprocessorError::UnexpectedToken(TokenValue::Integer("2".to_string())),
+        PreprocessorError::UnexpectedToken(TokenValue::Integer("2".into())),
     );
 }
 
@@ -1120,7 +1119,7 @@ fn line_define() {
     // Check that line directives don't allow floats
     check_preprocessing_error(
         "#line 1.0",
-        PreprocessorError::UnexpectedToken(TokenValue::Float("1.0".to_string())),
+        PreprocessorError::UnexpectedToken(TokenValue::Float("1.0".into())),
     )
 }
 
@@ -1137,10 +1136,7 @@ fn parse_version() {
             assert!(!version.has_comments_before);
             assert!(version.is_first_directive);
             assert_eq!(version.tokens.len(), 3);
-            assert_eq!(
-                version.tokens[0].value,
-                TokenValue::Integer("1".to_string())
-            );
+            assert_eq!(version.tokens[0].value, TokenValue::Integer("1".into()));
             assert_eq!(version.tokens[1].value, TokenValue::Punct(Punct::Semicolon));
             assert_eq!(version.tokens[2].value, TokenValue::Punct(Punct::LeftParen));
         }
